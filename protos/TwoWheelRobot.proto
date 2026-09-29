@@ -12,7 +12,56 @@ PROTO TwoWheelRobot [
   field SFString   controller     "<none>"
   field MFString   controllerArgs []
   field SFColor    bodyColor      0.15 0.15 0.6
-  field MFNode     extensionSlot  []
+  field MFNode     extensionSlot  [
+    DistanceSensor {
+      translation 0.04 0 0.02
+      name "ds_front"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 }
+          geometry Box { size 0.005 0.01 0.01 }
+        }
+      ]
+    }
+    DistanceSensor {
+      translation 0 0.025 0.02
+      rotation 0 0 1 1.5708
+      name "ds_left"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 }
+          geometry Box { size 0.005 0.01 0.01 }
+        }
+      ]
+    }
+    DistanceSensor {
+      translation 0 -0.025 0.02
+      rotation 0 0 1 -1.5708
+      name "ds_right"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 }
+          geometry Box { size 0.005 0.01 0.01 }
+        }
+      ]
+    }
+    Camera {
+      translation 0.04 0 0.01
+      rotation 0 1 0 -0.3
+      name "camera"
+      width 64
+      height 64
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 }
+          geometry Box { size 0.01 0.01 0.01 }
+        }
+      ]
+    }
+    InertialUnit {
+      name "inertial_unit"
+    }
+  ]
 ] {
   Robot {
     translation IS translation

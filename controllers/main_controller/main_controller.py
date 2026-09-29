@@ -1,25 +1,17 @@
 """
 main_controller.py
 
-The simplest possible starter controller for TwoWheelRobot.
-It does NOT try to avoid walls - it just drives around randomly and will
-bump into whatever is in its way. Both LEDs are also switched on so you
-can visually confirm they work. This is meant purely as a placeholder /
-example for teams to build on and edit themselves.
-
-File placement:
-  controllers/main_controller/main_controller.py
-(folder name and file name must match exactly)
+A starter controller with basic obstacle avoidance.
 """
 
 from controller import Robot
-import random
 
 TIME_STEP = 64
 MAX_SPEED = 6.0
 
 robot = Robot()
 
+# 1. Initialize Motors
 left_motor = robot.getDevice('left_wheel_motor')
 right_motor = robot.getDevice('right_wheel_motor')
 left_motor.setPosition(float('inf'))
@@ -27,36 +19,74 @@ right_motor.setPosition(float('inf'))
 left_motor.setVelocity(0.0)
 right_motor.setVelocity(0.0)
 
-# --- LED test: turn both on and leave them on the whole time ---
+# 2. Initialize LEDs
 led_blue = robot.getDevice('led_blue')
 led_green = robot.getDevice('led_green')
-led_blue.set(1)
-led_green.set(1)
+led_blue.set(0)
+led_green.set(0)
 
-# how many simulation steps to keep doing the current action before
-# picking a new random one
-steps_left = 0
-left_speed = MAX_SPEED
-right_speed = MAX_SPEED
+# 3. Initialize Sensors
+ds_front = robot.getDevice('ds_front')
+ds_left = robot.getDevice('ds_left')
+ds_right = robot.getDevice('ds_right')
 
+ds_front.enable(TIME_STEP)
+ds_left.enable(TIME_STEP)
+ds_right.enable(TIME_STEP)
+
+# (Optional) Initialize Camera and Inertial Unit for later
+camera = robot.getDevice('camera')
+if camera:
+    camera.enable(TIME_STEP)
+
+inertial_unit = robot.getDevice('inertial_unit')
+if inertial_unit:
+    inertial_unit.enable(TIME_STEP)
+
+print("Starting Basic Obstacle Avoidance...")
+
+# 4. Main Control Loop
 while robot.step(TIME_STEP) != -1:
-    if steps_left <= 0:
-        # pick a new random action: mostly drive forward, sometimes turn
-        action = random.choice(['forward', 'forward', 'forward', 'turn_left', 'turn_right'])
+    
+    # Read sensor values
+    front_val = ds_front.getValue()
+    left_val = ds_left.getValue()
+    right_val = ds_right.getValue()
 
-        if action == 'forward':
+    # The default DistanceSensor returns 1000 when an object is touching it, 
+    # and drops towards 0 the further away the object is.
+    # Let's say anything above 80 means an obstacle is too close.
+    obstacle_front = front_val > 80
+    obstacle_left = left_val > 80
+    obstacle_right = right_val > 80
+
+    # Default action is to drive straight
+    left_speed = MAX_SPEED
+    right_speed = MAX_SPEED
+
+    # Basic Avoidance Logic:
+    if obstacle_front:
+        # If there's a wall in front, turn! 
+        # We can check which side has more space to decide which way to turn.
+        if left_val > right_val:
+            # Left wall is closer, so turn right
             left_speed = MAX_SPEED
+            right_speed = -MAX_SPEED
+        else:
+            # Right wall is closer, so turn left
+            left_speed = -MAX_SPEED
             right_speed = MAX_SPEED
-            steps_left = random.randint(20, 60)   # keep going straight a while
-        elif action == 'turn_left':
-            left_speed = -MAX_SPEED * 0.5
-            right_speed = MAX_SPEED * 0.5
-            steps_left = random.randint(5, 15)
-        else:  # turn_right
-            left_speed = MAX_SPEED * 0.5
-            right_speed = -MAX_SPEED * 0.5
-            steps_left = random.randint(5, 15)
+            
+    elif obstacle_left:
+        # Too close to left wall, veer right slightly
+        left_speed = MAX_SPEED
+        right_speed = MAX_SPEED * 0.5
+        
+    elif obstacle_right:
+        # Too close to right wall, veer left slightly
+        left_speed = MAX_SPEED * 0.5
+        right_speed = MAX_SPEED
 
+    # Apply speeds to motors
     left_motor.setVelocity(left_speed)
     right_motor.setVelocity(right_speed)
-    steps_left -= 1
