@@ -48,7 +48,12 @@ robot.step(TIME_STEP)
 TARGET_YAW = inertial_unit.getRollPitchYaw()[2]
 
 print(f"Target Heading Locked: {TARGET_YAW:.2f} radians")
-print("Starting Target Heading + Obstacle Avoidance...")
+print("Starting Target Heading + Obstacle Avoidance with Escape Maneuvers...")
+
+# State Variables for the Escape Maneuver
+stuck_counter = 0
+escape_counter = 0
+is_escaping = False
 
 # 4. Main Control Loop
 while robot.step(TIME_STEP) != -1:
@@ -62,7 +67,6 @@ while robot.step(TIME_STEP) != -1:
     current_yaw = inertial_unit.getRollPitchYaw()[2]
 
     # Calculate difference between current heading and target heading
-    # We want to keep this difference as close to 0 as possible
     angle_diff = current_yaw - TARGET_YAW
     
     # Normalize the angle difference to handle the -pi to pi boundary wrap-around
@@ -76,31 +80,62 @@ while robot.step(TIME_STEP) != -1:
     obstacle_left = left_val < 900
     obstacle_right = right_val < 900
 
-    # Default action is to drive straight
+    # ---------------------------------------------
+    # ESCAPE MANEUVER LOGIC
+    # ---------------------------------------------
+    if not is_escaping:
+        # If we detect ANY obstacle, increase the stuck counter
+        if obstacle_front or obstacle_left or obstacle_right:
+            stuck_counter += 1
+        else:
+            stuck_counter = 0 # Path is clear, reset counter
+            
+        # If we've been struggling with an obstacle for ~2 seconds (120 steps at 16ms)
+        if stuck_counter > 120:
+            print("Robot is stuck! Initiating Escape Maneuver!")
+            is_escaping = True
+            escape_counter = 90  # 90 steps total for the escape
+            stuck_counter = 0
+
+    if is_escaping:
+        # Phase 1 of escape: Reverse for 60 steps (~1 second)
+        if escape_counter > 30:
+            left_speed = -MAX_SPEED
+            right_speed = -MAX_SPEED
+        # Phase 2 of escape: Spin right for 30 steps (~0.5 seconds)
+        else:
+            left_speed = MAX_SPEED
+            right_speed = -MAX_SPEED
+            
+        escape_counter -= 1
+        if escape_counter <= 0:
+            print("Escape complete. Resuming normal navigation.")
+            is_escaping = False
+            
+        # Apply speeds and immediately loop (skip normal logic)
+        left_motor.setVelocity(left_speed)
+        right_motor.setVelocity(right_speed)
+        continue
+
+    # ---------------------------------------------
+    # 1. NORMAL OBSTACLE AVOIDANCE (Highest Priority)
+    # ---------------------------------------------
     left_speed = MAX_SPEED
     right_speed = MAX_SPEED
 
-    # ---------------------------------------------
-    # 1. OBSTACLE AVOIDANCE (Highest Priority)
-    # ---------------------------------------------
     if obstacle_front:
-        # If there's a wall in front, check which side has more space
         if left_val > right_val:
-            # Left wall is closer, so turn right sharply
             left_speed = MAX_SPEED
             right_speed = -MAX_SPEED
         else:
-            # Right wall is closer, so turn left sharply
             left_speed = -MAX_SPEED
             right_speed = MAX_SPEED
             
     elif obstacle_left:
-        # Too close to left wall, veer right sharply
         left_speed = MAX_SPEED
         right_speed = 0.0
         
     elif obstacle_right:
-        # Too close to right wall, veer left sharply
         left_speed = 0.0
         right_speed = MAX_SPEED
 
@@ -108,16 +143,13 @@ while robot.step(TIME_STEP) != -1:
     # 2. TARGET HEADING (Run only if path is clear)
     # ---------------------------------------------
     else:
-        # If angle_diff is positive, the robot is facing too far left -> turn right
         if angle_diff > 0.1:
             left_speed = MAX_SPEED
             right_speed = MAX_SPEED * 0.5
-        # If angle_diff is negative, the robot is facing too far right -> turn left
         elif angle_diff < -0.1:
             left_speed = MAX_SPEED * 0.5
             right_speed = MAX_SPEED
         else:
-            # We are facing the correct direction! Go straight.
             left_speed = MAX_SPEED
             right_speed = MAX_SPEED
 
