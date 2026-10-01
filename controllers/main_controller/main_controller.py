@@ -1,12 +1,12 @@
 """
 main_controller.py
 
-A starter controller with basic obstacle avoidance.
+Basic obstacle avoidance and maze navigation logic.
 """
 
 from controller import Robot
 
-TIME_STEP = 64
+TIME_STEP = 16
 MAX_SPEED = 6.0
 
 robot = Robot()
@@ -14,10 +14,9 @@ robot = Robot()
 # 1. Initialize Motors
 left_motor = robot.getDevice('left_wheel_motor')
 right_motor = robot.getDevice('right_wheel_motor')
+
 left_motor.setPosition(float('inf'))
 right_motor.setPosition(float('inf'))
-left_motor.setVelocity(0.0)
-right_motor.setVelocity(0.0)
 
 # 2. Initialize LEDs
 led_blue = robot.getDevice('led_blue')
@@ -34,7 +33,6 @@ ds_front.enable(TIME_STEP)
 ds_left.enable(TIME_STEP)
 ds_right.enable(TIME_STEP)
 
-# (Optional) Initialize Camera and Inertial Unit for later
 camera = robot.getDevice('camera')
 if camera:
     camera.enable(TIME_STEP)
@@ -43,22 +41,21 @@ inertial_unit = robot.getDevice('inertial_unit')
 if inertial_unit:
     inertial_unit.enable(TIME_STEP)
 
-print("Starting Basic Obstacle Avoidance...")
+print("Robot Balanced! Starting Obstacle Avoidance...")
 
 # 4. Main Control Loop
 while robot.step(TIME_STEP) != -1:
     
-    # Read sensor values
+    # Read distance sensor values
+    # In Webots, usually 1000 = very close, 0 = far away
     front_val = ds_front.getValue()
     left_val = ds_left.getValue()
     right_val = ds_right.getValue()
 
-    # The default DistanceSensor returns 1000 when an object is touching it, 
-    # and drops towards 0 the further away the object is.
-    # Let's say anything above 80 means an obstacle is too close.
-    obstacle_front = front_val > 80
-    obstacle_left = left_val > 80
-    obstacle_right = right_val > 80
+    # Threshold for detecting an obstacle
+    obstacle_front = front_val > 100
+    obstacle_left = left_val > 100
+    obstacle_right = right_val > 100
 
     # Default action is to drive straight
     left_speed = MAX_SPEED
@@ -66,8 +63,7 @@ while robot.step(TIME_STEP) != -1:
 
     # Basic Avoidance Logic:
     if obstacle_front:
-        # If there's a wall in front, turn! 
-        # We can check which side has more space to decide which way to turn.
+        # If there's a wall in front, check which side has more space
         if left_val > right_val:
             # Left wall is closer, so turn right
             left_speed = MAX_SPEED

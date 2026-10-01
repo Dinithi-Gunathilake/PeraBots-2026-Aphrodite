@@ -14,7 +14,7 @@ PROTO TwoWheelRobot [
   field SFColor    bodyColor      0.15 0.15 0.6
   field MFNode     extensionSlot  [
     DistanceSensor {
-      translation 0.04 0 0.02
+      translation 0.042 0 0.04
       name "ds_front"
       children [
         Shape {
@@ -24,7 +24,7 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
-      translation 0 0.025 0.02
+      translation -3.67321e-08 0.035 0.02
       rotation 0 0 1 1.5708
       name "ds_left"
       children [
@@ -35,7 +35,7 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
-      translation 0 -0.025 0.02
+      translation -2.20392e-07 -0.035 0.02
       rotation 0 0 1 -1.5708
       name "ds_right"
       children [
@@ -46,8 +46,8 @@ PROTO TwoWheelRobot [
       ]
     }
     Camera {
-      translation 0.04 0 0.01
-      rotation 0 1 0 -0.3
+      translation -0.0258823 1.92771e-08 0.0175768
+      rotation -9.835109999350391e-06 -0.99999999993395 -5.947349999607177e-06 0.0382006
       name "camera"
       width 64
       height 64
@@ -92,7 +92,7 @@ PROTO TwoWheelRobot [
       HingeJoint {
         jointParameters HingeJointParameters {
           axis 0 1 0
-          anchor 0 0.032 0.02
+          anchor 0.015 0.032 0.02
         }
         device [
           RotationalMotor {
@@ -103,7 +103,7 @@ PROTO TwoWheelRobot [
           }
         ]
         endPoint Solid {
-          translation 0 0.032 0.02
+          translation 0.015 0.032 0.02
           rotation 1 0 0 1.5708
           children [
             Shape {
@@ -134,7 +134,7 @@ PROTO TwoWheelRobot [
       HingeJoint {
         jointParameters HingeJointParameters {
           axis 0 1 0
-          anchor 0 -0.032 0.02
+          anchor 0.015 -0.032 0.02
         }
         device [
           RotationalMotor {
@@ -145,7 +145,7 @@ PROTO TwoWheelRobot [
           }
         ]
         endPoint Solid {
-          translation 0 -0.032 0.02
+          translation 0.015 -0.032 0.02
           rotation 1 0 0 1.5708
           children [
             Shape {
