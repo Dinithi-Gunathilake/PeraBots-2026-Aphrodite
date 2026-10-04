@@ -16,56 +16,57 @@ PROTO TwoWheelRobot [
     DistanceSensor {
       translation 0.042 0 0.04
       name "ds_front"
-      children [
-        Shape {
-          appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 }
-          geometry Box { size 0.005 0.01 0.01 }
-        }
-      ]
+      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      children [ Shape { appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 } geometry Box { size 0.005 0.01 0.01 } } ]
     }
     DistanceSensor {
-      translation 0.04 0.02 0.02
+      translation 0.0297 0.0297 0.04
       rotation 0 0 1 0.785398
       name "ds_front_left"
-      children [
-        Shape {
-          appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 }
-          geometry Box { size 0.005 0.01 0.01 }
-        }
-      ]
+      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      children [ Shape { appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 } geometry Box { size 0.005 0.01 0.01 } } ]
     }
     DistanceSensor {
-      translation 0.04 -0.02 0.02
+      translation 0 0.042 0.04
+      rotation 0 0 1 1.570796
+      name "ds_left"
+      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      children [ Shape { appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 } geometry Box { size 0.005 0.01 0.01 } } ]
+    }
+    DistanceSensor {
+      translation -0.0297 0.0297 0.04
+      rotation 0 0 1 2.356194
+      name "ds_back_left"
+      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      children [ Shape { appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 } geometry Box { size 0.005 0.01 0.01 } } ]
+    }
+    DistanceSensor {
+      translation -0.042 0 0.04
+      rotation 0 0 1 3.141593
+      name "ds_back"
+      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      children [ Shape { appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 } geometry Box { size 0.005 0.01 0.01 } } ]
+    }
+    DistanceSensor {
+      translation -0.0297 -0.0297 0.04
+      rotation 0 0 1 -2.356194
+      name "ds_back_right"
+      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      children [ Shape { appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 } geometry Box { size 0.005 0.01 0.01 } } ]
+    }
+    DistanceSensor {
+      translation 0 -0.042 0.04
+      rotation 0 0 1 -1.570796
+      name "ds_right"
+      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      children [ Shape { appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 } geometry Box { size 0.005 0.01 0.01 } } ]
+    }
+    DistanceSensor {
+      translation 0.0297 -0.0297 0.04
       rotation 0 0 1 -0.785398
       name "ds_front_right"
-      children [
-        Shape {
-          appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 }
-          geometry Box { size 0.005 0.01 0.01 }
-        }
-      ]
-    }
-    DistanceSensor {
-      translation -3.67321e-08 0.035 0.02
-      rotation 0 0 1 1.5708
-      name "ds_left"
-      children [
-        Shape {
-          appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 }
-          geometry Box { size 0.005 0.01 0.01 }
-        }
-      ]
-    }
-    DistanceSensor {
-      translation -2.20392e-07 -0.035 0.02
-      rotation 0 0 1 -1.5708
-      name "ds_right"
-      children [
-        Shape {
-          appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 }
-          geometry Box { size 0.005 0.01 0.01 }
-        }
-      ]
+      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      children [ Shape { appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 } geometry Box { size 0.005 0.01 0.01 } } ]
     }
     Camera {
       translation -0.0258823 1.92771e-08 0.0175768
@@ -73,12 +74,7 @@ PROTO TwoWheelRobot [
       name "camera"
       width 64
       height 64
-      children [
-        Shape {
-          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 }
-          geometry Box { size 0.01 0.01 0.01 }
-        }
-      ]
+      children [ Shape { appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 } geometry Box { size 0.01 0.01 0.01 } } ]
     }
     InertialUnit {
       name "inertial_unit"

@@ -1,174 +1,141 @@
 """
 main_controller.py
 
-Basic obstacle avoidance and maze navigation logic.
+PeraBots 2026 - Phase 1 - Advanced SLAM
+Step 2: Startup Auto-Calibration (RANSAC Line Fitting)
 """
 
 from controller import Robot
+import math
 
 TIME_STEP = 16
-MAX_SPEED = 6.0
+MAX_WHEEL = 6.0
 
-robot = Robot()
+def wrap(a):
+    return (a + math.pi) % (2.0 * math.pi) - math.pi
 
-# 1. Initialize Motors
-left_motor = robot.getDevice('left_wheel_motor')
-right_motor = robot.getDevice('right_wheel_motor')
+def fit_wall(pts, centre, half):
+    """Fit 1/r = A cos(phi) + B sin(phi) (a straight wall) to samples near 'centre'."""
+    sel = [(p, 1.0 / r) for (p, r) in pts if abs(wrap(p - centre)) <= half]
+    A = B = 0.0
+    for _ in range(3):
+        if len(sel) < 4:
+            return None
+        sxx = sxy = syy = sxu = syu = 0.0
+        for p, u in sel:
+            c, s = math.cos(p), math.sin(p)
+            sxx += c * c; sxy += c * s; syy += s * s; sxu += c * u; syu += s * u
+        det = sxx * syy - sxy * sxy
+        if det < 1e-9:
+            return None
+        A = (sxu * syy - syu * sxy) / det
+        B = (syu * sxx - sxu * sxy) / det
+        keep = [(p, u) for (p, u) in sel
+                if abs(A * math.cos(p) + B * math.sin(p) - u) < 0.08 * u]
+        if len(keep) == len(sel):
+            break
+        sel = keep
+    if math.hypot(A, B) < 1e-6:
+        return None
+    return math.atan2(B, A), 1.0 / math.hypot(A, B)
 
-left_motor.setPosition(float('inf'))
-right_motor.setPosition(float('inf'))
+def predict_reading(x0, y0, alpha):
+    ca, sa = math.cos(alpha), math.sin(alpha)
+    t = 1e18
+    # Arena bounds: 2.44 x 1.22. Wall thickness: 0.006
+    if ca > 1e-9: t = min(t, (2.44 - 0.006 - x0) / ca)
+    if ca < -1e-9: t = min(t, (0.006 - x0) / ca)
+    if sa > 1e-9: t = min(t, (1.22 - 0.006 - y0) / sa)
+    if sa < -1e-9: t = min(t, (0.006 - y0) / sa)
+    return min(0.8, t - 0.042)
 
-# 2. Initialize LEDs
-led_blue = robot.getDevice('led_blue')
-led_green = robot.getDevice('led_green')
-led_blue.set(0)
-led_green.set(0)
-
-# 3. Initialize Sensors
-ds_front = robot.getDevice('ds_front')
-ds_front_left = robot.getDevice('ds_front_left')
-ds_front_right = robot.getDevice('ds_front_right')
-ds_left = robot.getDevice('ds_left')
-ds_right = robot.getDevice('ds_right')
-
-ds_front.enable(TIME_STEP)
-ds_front_left.enable(TIME_STEP)
-ds_front_right.enable(TIME_STEP)
-ds_left.enable(TIME_STEP)
-ds_right.enable(TIME_STEP)
-
-camera = robot.getDevice('camera')
-if camera:
-    camera.enable(TIME_STEP)
-
-inertial_unit = robot.getDevice('inertial_unit')
-if inertial_unit:
-    inertial_unit.enable(TIME_STEP)
-
-# Step once to initialize the sensors before reading them
-robot.step(TIME_STEP)
-
-# Capture the direction the robot is facing at the start of the simulation
-TARGET_YAW = inertial_unit.getRollPitchYaw()[2]
-
-print(f"Target Heading Locked: {TARGET_YAW:.2f} radians")
-print("Starting Target Heading + Obstacle Avoidance with Escape Maneuvers...")
-
-# State Variables for the Escape Maneuver
-stuck_counter = 0
-escape_counter = 0
-is_escaping = False
-loop_counter = 0
-
-# 4. Main Control Loop
-while robot.step(TIME_STEP) != -1:
-    
-    # Read distance sensor values
-    front_val = ds_front.getValue()
-    fl_val = ds_front_left.getValue()
-    fr_val = ds_front_right.getValue()
-    left_val = ds_left.getValue()
-    right_val = ds_right.getValue()
-    
-    # Read current orientation
-    current_yaw = inertial_unit.getRollPitchYaw()[2]
-
-    # Calculate difference between current heading and target heading
-    angle_diff = current_yaw - TARGET_YAW
-    
-    # Normalize the angle difference to handle the -pi to pi boundary wrap-around
-    if angle_diff > 3.14159:
-        angle_diff -= 6.28318
-    elif angle_diff < -3.14159:
-        angle_diff += 6.28318
-
-    # The generic DistanceSensor returns 1000 when the path is CLEAR
-    obstacle_front = front_val < 900 or fl_val < 400 or fr_val < 400
-    obstacle_left = left_val < 900
-    obstacle_right = right_val < 900
-
-    loop_counter += 1
-    if loop_counter % 60 == 0:
-        print(f"--- 1 Second Heartbeat | current stuck_counter: {stuck_counter} ---")
-
-    # ---------------------------------------------
-    # ESCAPE MANEUVER LOGIC
-    # ---------------------------------------------
-    if not is_escaping:
-        # If we detect ANY obstacle, increase the stuck counter
-        if obstacle_front or obstacle_left or obstacle_right:
-            stuck_counter += 1
-        else:
-            stuck_counter = 0 # Path is clear, reset counter
-            
-        # If we've been struggling with an obstacle for ~2 seconds (120 steps at 16ms)
-        if stuck_counter > 100:
-            print(f"Robot is stuck! Readings -> Front: {front_val:.1f}, FL: {fl_val:.1f}, FR: {fr_val:.1f}, Left: {left_val:.1f}, Right: {right_val:.1f}")
-            print("Initiating Escape Maneuver!")
-            is_escaping = True
-            escape_counter = 90  # 90 steps total for the escape
-            stuck_counter = 0
-
-    if is_escaping:
-        # Print readings during the escape maneuver so you can see what it detects
-        print(f"[ESCAPING] Step {escape_counter} | Front: {front_val:.1f}, FL: {fl_val:.1f}, FR: {fr_val:.1f}, Left: {left_val:.1f}, Right: {right_val:.1f}")
-        
-        # Phase 1 of escape: Reverse for 60 steps (~1 second)
-        if escape_counter > 10:
-            left_speed = -MAX_SPEED
-            right_speed = -MAX_SPEED
-        # Phase 2 of escape: Spin right for 30 steps (~0.5 seconds)
-        else:
-            left_speed = MAX_SPEED
-            right_speed = -MAX_SPEED
-            
-        escape_counter -= 1
-        if escape_counter <= 0:
-            print("Escape complete. Resuming normal navigation.")
-            is_escaping = False
-            
-        # Apply speeds and immediately loop (skip normal logic)
-        left_motor.setVelocity(left_speed)
-        right_motor.setVelocity(right_speed)
-        continue
-
-    # ---------------------------------------------
-    # 1. NORMAL OBSTACLE AVOIDANCE (Highest Priority)
-    # ---------------------------------------------
-    left_speed = MAX_SPEED
-    right_speed = MAX_SPEED
-
-    if obstacle_front:
-        # If left side is more clear than right side
-        if (left_val + fl_val) > (right_val + fr_val):
-            left_speed = MAX_SPEED
-            right_speed = -MAX_SPEED
-        else:
-            left_speed = -MAX_SPEED
-            right_speed = MAX_SPEED
-            
-    elif obstacle_left:
-        left_speed = MAX_SPEED
-        right_speed = 0.0
-        
-    elif obstacle_right:
-        left_speed = 0.0
-        right_speed = MAX_SPEED
-
-    # ---------------------------------------------
-    # 2. TARGET HEADING (Run only if path is clear)
-    # ---------------------------------------------
+def localise_from_scan(samples):
+    pts = [(p, d + 0.042) for (p, d) in samples if d < 0.75]
+    if len(pts) < 20:
+        return None
+    pm, _ = min(pts, key=lambda q: q[1])
+    w1 = fit_wall(pts, pm, 0.35)
+    if w1 is None:
+        return None
+    a1, D1 = w1
+    best = None
+    for sgn in (-1, 1):
+        c = wrap(a1 + sgn * math.pi / 2)
+        w = fit_wall(pts, c, 0.21)
+        if w is not None and abs(wrap(w[0] - c)) < 0.15:
+            if best is None or w[1] < best[1][1]:
+                best = (sgn, w)
+    if best is None:
+        return None
+    sgn, (a2, D2) = best
+    if sgn == -1:
+        phi_x, Dx, Dy = a1, D1, D2
     else:
-        if angle_diff > 0.1:
-            left_speed = MAX_SPEED
-            right_speed = MAX_SPEED * 0.5
-        elif angle_diff < -0.1:
-            left_speed = MAX_SPEED * 0.5
-            right_speed = MAX_SPEED
-        else:
-            left_speed = MAX_SPEED
-            right_speed = MAX_SPEED
+        phi_x, Dx, Dy = a2, D2, D1
+        
+    x0 = 2.44 - 0.006 - Dx
+    y0 = 0.006 + Dy
+    return x0, y0, phi_x
 
-    # Apply speeds to motors
-    left_motor.setVelocity(left_speed)
-    right_motor.setVelocity(right_speed)
+def main():
+    robot = Robot()
+    
+    # 1. Initialize Motors
+    left_motor = robot.getDevice('left_wheel_motor')
+    right_motor = robot.getDevice('right_wheel_motor')
+    left_motor.setPosition(float('inf'))
+    right_motor.setPosition(float('inf'))
+    left_motor.setVelocity(0)
+    right_motor.setVelocity(0)
+    
+    # 2. Initialize Sensors (Only need front and IMU for spinning calib)
+    ds_front = robot.getDevice('ds_front')
+    ds_front.enable(TIME_STEP)
+    
+    imu = robot.getDevice('inertial_unit')
+    imu.enable(TIME_STEP)
+    
+    print("--- Starting Auto-Calibration Spin ---")
+    
+    # Spin in place
+    left_motor.setVelocity(MAX_WHEEL)
+    right_motor.setVelocity(-MAX_WHEEL)
+    
+    samples = []
+    
+    # Collect data for about 3.5 seconds (220 steps)
+    for _ in range(220):
+        if robot.step(TIME_STEP) == -1:
+            return
+            
+        yaw = imu.getRollPitchYaw()[2]
+        dist = ds_front.getValue()
+        
+        # In case it's hitting the limit
+        if dist != dist:
+            dist = 0.8
+            
+        samples.append((yaw, dist))
+        
+    # Stop spinning
+    left_motor.setVelocity(0)
+    right_motor.setVelocity(0)
+    
+    print(f"Collected {len(samples)} data points. Calculating exact position...")
+    
+    # Calculate position
+    result = localise_from_scan(samples)
+    
+    if result:
+        x, y, theta = result
+        print("=========================================")
+        print("  AUTO-CALIBRATION SUCCESSFUL!  ")
+        print(f"  Calculated X: {x:.4f} m")
+        print(f"  Calculated Y: {y:.4f} m")
+        print(f"  Calculated Theta: {theta:.4f} rad")
+        print("=========================================")
+    else:
+        print("Calibration failed. Start zone walls not found.")
+
+if __name__ == "__main__":
+    main()
