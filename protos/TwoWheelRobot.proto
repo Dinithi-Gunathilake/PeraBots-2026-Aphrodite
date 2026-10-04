@@ -24,6 +24,28 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
+      translation 0.04 0.02 0.02
+      rotation 0 0 1 0.785398
+      name "ds_front_left"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 }
+          geometry Box { size 0.005 0.01 0.01 }
+        }
+      ]
+    }
+    DistanceSensor {
+      translation 0.04 -0.02 0.02
+      rotation 0 0 1 -0.785398
+      name "ds_front_right"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 }
+          geometry Box { size 0.005 0.01 0.01 }
+        }
+      ]
+    }
+    DistanceSensor {
       translation -3.67321e-08 0.035 0.02
       rotation 0 0 1 1.5708
       name "ds_left"

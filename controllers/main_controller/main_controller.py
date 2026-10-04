@@ -26,10 +26,14 @@ led_green.set(0)
 
 # 3. Initialize Sensors
 ds_front = robot.getDevice('ds_front')
+ds_front_left = robot.getDevice('ds_front_left')
+ds_front_right = robot.getDevice('ds_front_right')
 ds_left = robot.getDevice('ds_left')
 ds_right = robot.getDevice('ds_right')
 
 ds_front.enable(TIME_STEP)
+ds_front_left.enable(TIME_STEP)
+ds_front_right.enable(TIME_STEP)
 ds_left.enable(TIME_STEP)
 ds_right.enable(TIME_STEP)
 
@@ -54,12 +58,15 @@ print("Starting Target Heading + Obstacle Avoidance with Escape Maneuvers...")
 stuck_counter = 0
 escape_counter = 0
 is_escaping = False
+loop_counter = 0
 
 # 4. Main Control Loop
 while robot.step(TIME_STEP) != -1:
     
     # Read distance sensor values
     front_val = ds_front.getValue()
+    fl_val = ds_front_left.getValue()
+    fr_val = ds_front_right.getValue()
     left_val = ds_left.getValue()
     right_val = ds_right.getValue()
     
@@ -76,9 +83,13 @@ while robot.step(TIME_STEP) != -1:
         angle_diff += 6.28318
 
     # The generic DistanceSensor returns 1000 when the path is CLEAR
-    obstacle_front = front_val < 900
+    obstacle_front = front_val < 900 or fl_val < 400 or fr_val < 400
     obstacle_left = left_val < 900
     obstacle_right = right_val < 900
+
+    loop_counter += 1
+    if loop_counter % 60 == 0:
+        print(f"--- 1 Second Heartbeat | current stuck_counter: {stuck_counter} ---")
 
     # ---------------------------------------------
     # ESCAPE MANEUVER LOGIC
@@ -91,15 +102,19 @@ while robot.step(TIME_STEP) != -1:
             stuck_counter = 0 # Path is clear, reset counter
             
         # If we've been struggling with an obstacle for ~2 seconds (120 steps at 16ms)
-        if stuck_counter > 120:
-            print("Robot is stuck! Initiating Escape Maneuver!")
+        if stuck_counter > 100:
+            print(f"Robot is stuck! Readings -> Front: {front_val:.1f}, FL: {fl_val:.1f}, FR: {fr_val:.1f}, Left: {left_val:.1f}, Right: {right_val:.1f}")
+            print("Initiating Escape Maneuver!")
             is_escaping = True
             escape_counter = 90  # 90 steps total for the escape
             stuck_counter = 0
 
     if is_escaping:
+        # Print readings during the escape maneuver so you can see what it detects
+        print(f"[ESCAPING] Step {escape_counter} | Front: {front_val:.1f}, FL: {fl_val:.1f}, FR: {fr_val:.1f}, Left: {left_val:.1f}, Right: {right_val:.1f}")
+        
         # Phase 1 of escape: Reverse for 60 steps (~1 second)
-        if escape_counter > 30:
+        if escape_counter > 10:
             left_speed = -MAX_SPEED
             right_speed = -MAX_SPEED
         # Phase 2 of escape: Spin right for 30 steps (~0.5 seconds)
@@ -124,7 +139,8 @@ while robot.step(TIME_STEP) != -1:
     right_speed = MAX_SPEED
 
     if obstacle_front:
-        if left_val > right_val:
+        # If left side is more clear than right side
+        if (left_val + fl_val) > (right_val + fr_val):
             left_speed = MAX_SPEED
             right_speed = -MAX_SPEED
         else:
