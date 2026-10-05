@@ -140,14 +140,28 @@ class Bot:
             if abs(wrap(abs_angle - 0.0)) < 0.2:
                 perp_d = d * math.cos(wrap(abs_angle - 0.0))
                 pred_x = ARENA_W - 0.006 - perp_d - 0.042
-                if abs(pred_x - self.x) < 0.15: 
+                if abs(pred_x - self.x) < 0.05: 
                     self.x = 0.90 * self.x + 0.10 * pred_x
             
             # Roughly Top (+Y)
             elif abs(wrap(abs_angle - (math.pi/2))) < 0.2:
                 perp_d = d * math.cos(wrap(abs_angle - (math.pi/2)))
                 pred_y = ARENA_H - 0.006 - perp_d - 0.042
-                if abs(pred_y - self.y) < 0.15: 
+                if abs(pred_y - self.y) < 0.05: 
+                    self.y = 0.90 * self.y + 0.10 * pred_y
+                    
+            # Roughly Left (-X)
+            elif abs(wrap(abs_angle - math.pi)) < 0.2:
+                perp_d = d * math.cos(wrap(abs_angle - math.pi))
+                pred_x = 0.006 + perp_d + 0.042
+                if abs(pred_x - self.x) < 0.05:
+                    self.x = 0.90 * self.x + 0.10 * pred_x
+                    
+            # Roughly Bottom (-Y)
+            elif abs(wrap(abs_angle - (-math.pi/2))) < 0.2:
+                perp_d = d * math.cos(wrap(abs_angle - (-math.pi/2)))
+                pred_y = 0.006 + perp_d + 0.042
+                if abs(pred_y - self.y) < 0.05:
                     self.y = 0.90 * self.y + 0.10 * pred_y
 
     def update_map(self):
@@ -204,14 +218,14 @@ class Bot:
                 ni, nj = i + di, j + dj
                 if ni < 0 or nj < 0 or ni >= NX or nj >= NY: continue
                 
-                # Check obstacle + simple inflation (robot radius is ~4cm = 2 cells)
+                # Check obstacle + circular inflation (radius = 2 cells = 4cm clearance)
                 blocked = False
                 for dx in [-2, -1, 0, 1, 2]:
                     for dy in [-2, -1, 0, 1, 2]:
-                        # A bit rough, but safe: a 5x5 square inflation
-                        if 0 <= ni+dx < NX and 0 <= nj+dy < NY:
-                            if self.map[(nj+dy) * NX + (ni+dx)] == 1:
-                                blocked = True
+                        if dx*dx + dy*dy <= 5: # Circular footprint radius ~2.2
+                            if 0 <= ni+dx < NX and 0 <= nj+dy < NY:
+                                if self.map[(nj+dy) * NX + (ni+dx)] == 1:
+                                    blocked = True
                 
                 nidx = nj * NX + ni
                 if blocked or closed[nidx]: continue
@@ -223,33 +237,57 @@ class Bot:
                     # Heuristic
                     h = math.hypot(ni - goal[0], nj - goal[1])
                     heapq.heappush(heap, (ng + h, nidx))
+                    
+        print(f"[A* ERROR] Queue emptied. No path found to GOAL {goal} from START {start}!")
+        self.path = []
 
     def navigate(self):
         """Pure Pursuit Follower to drive along self.path."""
         if not self.path or len(self.path) < 2:
+            print(f"[NAVIGATE] Stuck! Path length is {len(self.path) if self.path else 0}. Motors OFF.")
             self.drive_wheels(0, 0)
             return
             
-        # Find lookahead point (roughly 15cm ahead)
-        lookahead = min(15, len(self.path) - 1)
+        # Find closest point on path to current robot position
+        min_dist = INF
+        closest_idx = 0
+        for i, p in enumerate(self.path):
+            d = math.hypot(p[0] - self.x, p[1] - self.y)
+            if d < min_dist:
+                min_dist = d
+                closest_idx = i
+                
+        # Lookahead 10 nodes (20cm) to prevent corner cutting
+        lookahead = min(closest_idx + 10, len(self.path) - 1)
         target = self.path[lookahead]
         
         # Calculate heading error
         target_angle = math.atan2(target[1] - self.y, target[0] - self.x)
         e = wrap(target_angle - self.th)
         
-        # Drive control
+        # Drive control - Smoother!
         if abs(e) > 0.6: # Sharp turn: spin in place
-            v_l = -MAX_WHEEL if e < 0 else MAX_WHEEL
-            v_r = MAX_WHEEL if e < 0 else -MAX_WHEEL
+            v_l = MAX_WHEEL * 0.5 if e < 0 else -MAX_WHEEL * 0.5
+            v_r = -MAX_WHEEL * 0.5 if e < 0 else MAX_WHEEL * 0.5
         else: # Smooth proportional curve
-            speed = MAX_WHEEL * 0.9
-            turn = e * MAX_WHEEL * 1.5
+            speed = MAX_WHEEL * 0.8  # slower base speed
+            turn = e * MAX_WHEEL * 0.8  # much gentler steering gain
+            
+            # Repulsive Steering: Push away from close corners to prevent clipping!
+            if self.d[1] < 0.12: # Front-Left sees corner
+                turn -= (0.12 - self.d[1]) * MAX_WHEEL * 3.0
+            if self.d[7] < 0.12: # Front-Right sees corner
+                turn += (0.12 - self.d[7]) * MAX_WHEEL * 3.0
+            
+            # Slow down if obstacle is close in front
+            if min(self.d[0], self.d[1], self.d[7]) < 0.2:
+                speed *= 0.5
+                
             v_l = speed - turn
             v_r = speed + turn
             
+        print(f"[NAVIGATE] Path: {len(self.path)} nodes. e: {math.degrees(e):.1f}°. v_l: {v_l:.2f}, v_r: {v_r:.2f}")
         self.drive_wheels(v_l, v_r)
-
 def main():
     robot = Robot()
     bot = Bot(robot)
@@ -272,9 +310,13 @@ def main():
         print("Calibration failed!")
         return
 
+    # Clear map garbage collected during the spin when coordinates were 0,0
+    bot.map = bytearray(NX * NY)
     print("--- Navigating Maze to Goal ---")
     
     plan_counter = 0
+    bot.a_star() # Force A* immediately on step 0!
+    
     while bot.step():
         plan_counter += 1
         
