@@ -8,6 +8,7 @@ Step 4: A* Global Planning + 8-Sensor Occupancy Grid
 from controller import Robot
 import math
 import heapq
+import collections
 
 TIME_STEP = 16
 MAX_WHEEL = 6.0
@@ -100,7 +101,7 @@ class Bot:
         self.wl_prev = self.wr_prev = None
         
         # SLAM Maps
-        self.map = bytearray(NX * NY)
+        self.map = bytearray([127] * (NX * NY)) # 127=Unknown, 0=Free, 255=Obstacle
         self.path = []
         
         # State Machine & Hardware
@@ -171,20 +172,102 @@ class Bot:
                     self.y = 0.90 * self.y + 0.10 * pred_y
 
     def update_map(self):
-        """Project the 8 sensors into the Occupancy Grid."""
+        cx, cy = int(self.x / CELL), int(self.y / CELL)
         for k, (_, sx, sy, ang) in enumerate(self.ds):
             d = self.d[k]
-            if d >= 0.75: continue # Max range or inf
-            
             abs_a = wrap(self.th + ang)
-            px = self.x + (d + 0.042) * math.cos(abs_a)
-            py = self.y + (d + 0.042) * math.sin(abs_a)
             
-            ix = int(px / CELL)
-            iy = int(py / CELL)
+            # Max range for raycast clearing
+            clear_d = d if d < 0.75 else 0.75
             
-            if 0 <= ix < NX and 0 <= iy < NY:
-                self.map[iy * NX + ix] = 1 # Mark as blocked
+            # Bresenham to clear free space
+            px_clear = self.x + clear_d * math.cos(abs_a)
+            py_clear = self.y + clear_d * math.sin(abs_a)
+            
+            x0, y0 = cx, cy
+            x1, y1 = int(px_clear / CELL), int(py_clear / CELL)
+            
+            dx = abs(x1 - x0)
+            dy = abs(y1 - y0)
+            sx_step = 1 if x0 < x1 else -1
+            sy_step = 1 if y0 < y1 else -1
+            err = dx - dy
+            
+            while True:
+                if 0 <= x0 < NX and 0 <= y0 < NY:
+                    # Clear free space ONLY if it's currently Unknown (don't erase walls!)
+                    if self.map[y0 * NX + x0] == 127:
+                        self.map[y0 * NX + x0] = 0 
+                if x0 == x1 and y0 == y1:
+                    break
+                e2 = 2 * err
+                if e2 > -dy:
+                    err -= dy
+                    x0 += sx_step
+                if e2 < dx:
+                    err += dx
+                    y0 += sy_step
+                    
+            # Mark Obstacle
+            if d < 0.75:
+                px = self.x + (d + 0.042) * math.cos(abs_a)
+                py = self.y + (d + 0.042) * math.sin(abs_a)
+                ix, iy = int(px / CELL), int(py / CELL)
+                if 0 <= ix < NX and 0 <= iy < NY:
+                    self.map[iy * NX + ix] = 255
+
+    def plan_to_frontier(self):
+        """BFS to find the closest reachable frontier cell."""
+        cx, cy = int(self.x / CELL), int(self.y / CELL)
+        if not (0 <= cx < NX and 0 <= cy < NY): return
+        
+        queue = collections.deque([((cx, cy), [])])
+        visited = bytearray(NX * NY)
+        visited[cy * NX + cx] = 1
+        
+        while queue:
+            (px, py), path = queue.popleft()
+            
+            # Is it a frontier? (Free space bordering Unknown)
+            is_frontier = False
+            for dx, dy in [(-1,0), (1,0), (0,-1), (0,1)]:
+                nx, ny = px+dx, py+dy
+                if 0 <= nx < NX and 0 <= ny < NY:
+                    if self.map[ny * NX + nx] == 127:
+                        is_frontier = True
+                        break
+                        
+            if is_frontier and len(path) > 2:
+                # Target acquired! Convert grid path to real-world coordinates
+                self.path = [((ix+0.5)*CELL, (iy+0.5)*CELL) for ix, iy in path]
+                return
+                
+            # Expand neighbors
+            for dx, dy in [(-1,0), (1,0), (0,-1), (0,1)]:
+                nx, ny = px+dx, py+dy
+                if 0 <= nx < NX and 0 <= ny < NY:
+                    nidx = ny * NX + nx
+                    if not visited[nidx]:
+                        visited[nidx] = 1
+                        if self.map[nidx] == 0: # Only route through known Free space
+                            
+                            # Apply Obstacle Inflation check!
+                            blocked = False
+                            for idx in [-2, -1, 0, 1, 2]:
+                                for idy in [-2, -1, 0, 1, 2]:
+                                    if idx*idx + idy*idy <= 5: # 4cm circular clearance
+                                        ix, iy = nx+idx, ny+idy
+                                        if 0 <= ix < NX and 0 <= iy < NY:
+                                            if self.map[iy * NX + ix] == 255:
+                                                blocked = True
+                                                break
+                                if blocked: break
+                                
+                            if not blocked:
+                                queue.append(((nx, ny), path + [(nx, ny)]))
+                                
+        print("[EXPLORE] MAZE FULLY MAPPED! No frontiers left.")
+        self.path = []
                 
     def a_star(self):
         """Find fastest path to GOAL avoiding self.map obstacles."""
@@ -230,7 +313,7 @@ class Bot:
                     for dy in [-2, -1, 0, 1, 2]:
                         if dx*dx + dy*dy <= 5: # Circular footprint radius ~2.2
                             if 0 <= ni+dx < NX and 0 <= nj+dy < NY:
-                                if self.map[(nj+dy) * NX + (ni+dx)] == 1:
+                                if self.map[(nj+dy) * NX + (ni+dx)] == 255:
                                     blocked = True
                 
                 nidx = nj * NX + ni
@@ -339,13 +422,23 @@ def main():
         elif bot.state == "TRANSITION":
             print("--- ACTIVATING CAMERA & CLEARING MAP FOR MAZE ---")
             bot.camera.enable(TIME_STEP)
-            bot.map = bytearray(NX * NY) # Clear Section 1 obstacles
+            bot.map = bytearray([127] * (NX * NY)) # Clear Section 1 obstacles, reset to Unknown
             bot.path = []
             bot.state = "EXPLORE"
             
         elif bot.state == "EXPLORE":
-            bot.drive_wheels(0, 0)
-            # Step 3 (Frontier Exploration) and Step 4 (Color Detection) will go here!
+            plan_counter += 1
+            if plan_counter % 20 == 0 or not bot.path:
+                bot.plan_to_frontier()
+                
+                # If no frontiers left, we mapped everything! Time to finish.
+                if not bot.path:
+                    bot.state = "FINISH"
+                    print("--- EXPLORATION COMPLETE. TRANSITIONING TO FINISH ---")
+                    
+            bot.navigate()
+            
+            # Step 4 (Color Detection) will go here!
             
         elif bot.state == "FINISH":
             bot.drive_wheels(0, 0)
