@@ -1,17 +1,24 @@
 """
 main_controller.py
 
-PeraBots 2026 - Phase 1 - Advanced SLAM
-Step 3: Drift-Free Scan Matching + Odometry
+PeraBots 2026 - Phase 1 - Complete Advanced SLAM
+Step 4: A* Global Planning + 8-Sensor Occupancy Grid
 """
 
 from controller import Robot
 import math
+import heapq
 
 TIME_STEP = 16
 MAX_WHEEL = 6.0
 WHEEL_R = 0.02
 ARENA_W, ARENA_H = 2.44, 1.22
+GOAL = (0.22, 1.27)
+
+CELL = 0.02
+NX = int(round(ARENA_W / CELL))
+NY = int(round(1.40 / CELL))
+INF = 1e18
 
 # 8 Sensors (Name, X_offset, Y_offset, Angle_in_degrees)
 SENSORS = [
@@ -91,6 +98,10 @@ class Bot:
         self.d = [0.8] * 8
         self.x = self.y = self.th = 0.0
         self.wl_prev = self.wr_prev = None
+        
+        # SLAM Maps
+        self.map = bytearray(NX * NY)
+        self.path = []
 
     def drive_wheels(self, wl, wr):
         self.lm.setVelocity(max(-MAX_WHEEL, min(MAX_WHEEL, wl)))
@@ -104,10 +115,8 @@ class Bot:
             v = dev.getValue()
             self.d[k] = 0.8 if v != v else max(0.0, min(0.8, v))
             
-        # Read IMU for Drift-Free Heading
+        # Update Odometry
         self.th = self.imu.getRollPitchYaw()[2]
-        
-        # Update Odometry for X and Y
         wl, wr = self.ls.getValue(), self.rs.getValue()
         if self.wl_prev is not None:
             ds = 0.5 * ((wl - self.wl_prev) + (wr - self.wr_prev)) * WHEEL_R
@@ -116,39 +125,130 @@ class Bot:
         self.wl_prev, self.wr_prev = wl, wr
         
         self.scan_match()
+        self.update_map()
         return True
 
     def scan_match(self):
-        """Corrects wheel slip by comparing our 8 sensors against the fixed outer walls."""
         for k, (_, _, _, ang) in enumerate(self.ds):
             d = self.d[k]
-            if d >= 0.7: continue # Ignore far readings
-                
+            if d >= 0.7: continue
+            
             abs_angle = wrap(self.th + ang)
             
-            # If looking +X (Right Wall)
-            if abs(wrap(abs_angle - 0.0)) < 0.08:
-                pred_x = ARENA_W - 0.006 - d - 0.042
-                if abs(pred_x - self.x) < 0.15: # Must be wall, not an obstacle cube
+            # Smart Scan Matching using cosine projection for slight angles
+            # If pointing roughly Right (+X)
+            if abs(wrap(abs_angle - 0.0)) < 0.2:
+                perp_d = d * math.cos(wrap(abs_angle - 0.0))
+                pred_x = ARENA_W - 0.006 - perp_d - 0.042
+                if abs(pred_x - self.x) < 0.15: 
                     self.x = 0.90 * self.x + 0.10 * pred_x
-                    
-            # If looking +Y (Top Wall)
-            elif abs(wrap(abs_angle - (math.pi/2))) < 0.08:
-                pred_y = ARENA_H - 0.006 - d - 0.042
-                if abs(pred_y - self.y) < 0.15:
+            
+            # Roughly Top (+Y)
+            elif abs(wrap(abs_angle - (math.pi/2))) < 0.2:
+                perp_d = d * math.cos(wrap(abs_angle - (math.pi/2)))
+                pred_y = ARENA_H - 0.006 - perp_d - 0.042
+                if abs(pred_y - self.y) < 0.15: 
                     self.y = 0.90 * self.y + 0.10 * pred_y
-                    
-            # If looking -X (Left Wall)
-            elif abs(wrap(abs_angle - math.pi)) < 0.08:
-                pred_x = 0.006 + d + 0.042
-                if abs(pred_x - self.x) < 0.15:
-                    self.x = 0.90 * self.x + 0.10 * pred_x
-                    
-            # If looking -Y (Bottom Wall)
-            elif abs(wrap(abs_angle - (-math.pi/2))) < 0.08:
-                pred_y = 0.006 + d + 0.042
-                if abs(pred_y - self.y) < 0.15:
-                    self.y = 0.90 * self.y + 0.10 * pred_y
+
+    def update_map(self):
+        """Project the 8 sensors into the Occupancy Grid."""
+        for k, (_, sx, sy, ang) in enumerate(self.ds):
+            d = self.d[k]
+            if d >= 0.75: continue # Max range or inf
+            
+            abs_a = wrap(self.th + ang)
+            px = self.x + (d + 0.042) * math.cos(abs_a)
+            py = self.y + (d + 0.042) * math.sin(abs_a)
+            
+            ix = int(px / CELL)
+            iy = int(py / CELL)
+            
+            if 0 <= ix < NX and 0 <= iy < NY:
+                self.map[iy * NX + ix] = 1 # Mark as blocked
+                
+    def a_star(self):
+        """Find fastest path to GOAL avoiding self.map obstacles."""
+        start = (int(self.x / CELL), int(self.y / CELL))
+        goal = (int(GOAL[0] / CELL), int(GOAL[1] / CELL))
+        
+        # Cap to array bounds
+        if not (0 <= start[0] < NX and 0 <= start[1] < NY): return
+        
+        N = NX * NY
+        g = [INF] * N
+        parent = [-1] * N
+        s_idx = start[1] * NX + start[0]
+        g[s_idx] = 0.0
+        heap = [(0.0, s_idx)]
+        closed = bytearray(N)
+        
+        moves = [(1,0,1.0), (-1,0,1.0), (0,1,1.0), (0,-1,1.0), 
+                 (1,1,1.414), (1,-1,1.414), (-1,1,1.414), (-1,-1,1.414)]
+                 
+        while heap:
+            _, idx = heapq.heappop(heap)
+            if closed[idx]: continue
+            closed[idx] = 1
+            i, j = idx % NX, idx // NX
+            
+            if i == goal[0] and j == goal[1]:
+                out = []
+                while idx != -1:
+                    out.append((idx % NX, idx // NX))
+                    idx = parent[idx]
+                out.reverse()
+                self.path = [((ix+0.5)*CELL, (iy+0.5)*CELL) for ix, iy in out]
+                return
+                
+            for di, dj, cost in moves:
+                ni, nj = i + di, j + dj
+                if ni < 0 or nj < 0 or ni >= NX or nj >= NY: continue
+                
+                # Check obstacle + simple inflation (robot radius is ~4cm = 2 cells)
+                blocked = False
+                for dx in [-2, -1, 0, 1, 2]:
+                    for dy in [-2, -1, 0, 1, 2]:
+                        # A bit rough, but safe: a 5x5 square inflation
+                        if 0 <= ni+dx < NX and 0 <= nj+dy < NY:
+                            if self.map[(nj+dy) * NX + (ni+dx)] == 1:
+                                blocked = True
+                
+                nidx = nj * NX + ni
+                if blocked or closed[nidx]: continue
+                
+                ng = g[idx] + cost
+                if ng < g[nidx]:
+                    g[nidx] = ng
+                    parent[nidx] = idx
+                    # Heuristic
+                    h = math.hypot(ni - goal[0], nj - goal[1])
+                    heapq.heappush(heap, (ng + h, nidx))
+
+    def navigate(self):
+        """Pure Pursuit Follower to drive along self.path."""
+        if not self.path or len(self.path) < 2:
+            self.drive_wheels(0, 0)
+            return
+            
+        # Find lookahead point (roughly 15cm ahead)
+        lookahead = min(15, len(self.path) - 1)
+        target = self.path[lookahead]
+        
+        # Calculate heading error
+        target_angle = math.atan2(target[1] - self.y, target[0] - self.x)
+        e = wrap(target_angle - self.th)
+        
+        # Drive control
+        if abs(e) > 0.6: # Sharp turn: spin in place
+            v_l = -MAX_WHEEL if e < 0 else MAX_WHEEL
+            v_r = MAX_WHEEL if e < 0 else -MAX_WHEEL
+        else: # Smooth proportional curve
+            speed = MAX_WHEEL * 0.9
+            turn = e * MAX_WHEEL * 1.5
+            v_l = speed - turn
+            v_r = speed + turn
+            
+        self.drive_wheels(v_l, v_r)
 
 def main():
     robot = Robot()
@@ -160,7 +260,7 @@ def main():
     samples = []
     for _ in range(220):
         if not bot.step(): return
-        samples.append((bot.th, bot.d[0])) # Yaw and ds_front
+        samples.append((bot.th, bot.d[0]))
         
     bot.drive_wheels(0, 0)
     
@@ -172,15 +272,23 @@ def main():
         print("Calibration failed!")
         return
 
-    print("--- Testing Drift-Free Odometry ---")
-    # Drive forward slightly to test the scan-matching
-    bot.drive_wheels(MAX_WHEEL, MAX_WHEEL)
+    print("--- Navigating Maze to Goal ---")
     
-    counter = 0
+    plan_counter = 0
     while bot.step():
-        counter += 1
-        if counter % 30 == 0:
-            print(f"[LIVE MAP] X: {bot.x:.3f} m, Y: {bot.y:.3f} m, Head: {math.degrees(bot.th):.1f}°")
+        plan_counter += 1
+        
+        # Re-plan A* path twice a second
+        if plan_counter % 30 == 0:
+            bot.a_star()
+            
+        bot.navigate()
+        
+        dist_to_goal = math.hypot(bot.x - GOAL[0], bot.y - GOAL[1])
+        if dist_to_goal < 0.15:
+            print("=== REACHED TRANSITION ZONE! ===")
+            bot.drive_wheels(0, 0)
+            break
 
 if __name__ == "__main__":
     main()
