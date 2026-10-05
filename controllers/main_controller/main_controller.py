@@ -17,8 +17,13 @@ ARENA_W, ARENA_H = 2.44, 1.22
 GOAL = (0.22, 1.27)
 
 CELL = 0.02
-NX = int(round(ARENA_W / CELL))
-NY = int(round(1.40 / CELL))
+# Section 1 is 2.44 wide, Section 2 is 2.25 wide (total ~4.7m).
+MIN_X, MAX_X = -3.0, 3.0
+MIN_Y, MAX_Y = -1.0, 3.0
+NX = int(round((MAX_X - MIN_X) / CELL))
+NY = int(round((MAX_Y - MIN_Y) / CELL))
+OFFSET_X = int(round(-MIN_X / CELL))
+OFFSET_Y = int(round(-MIN_Y / CELL))
 INF = 1e18
 
 # 8 Sensors (Name, X_offset, Y_offset, Angle_in_degrees)
@@ -109,6 +114,12 @@ class Bot:
         self.camera = robot.getDevice("camera")
         self.led_blue = robot.getDevice("led_blue")
         self.led_green = robot.getDevice("led_green")
+        
+        # Color Counting & Memory
+        self.blue_count = 0
+        self.green_count = 0
+        self.tile_memory = []
+        self.final_end_cell = None
 
     def drive_wheels(self, wl, wr):
         self.lm.setVelocity(max(-MAX_WHEEL, min(MAX_WHEEL, wl)))
@@ -172,7 +183,8 @@ class Bot:
                     self.y = 0.90 * self.y + 0.10 * pred_y
 
     def update_map(self):
-        cx, cy = int(self.x / CELL), int(self.y / CELL)
+        cx = int(self.x / CELL) + OFFSET_X
+        cy = int(self.y / CELL) + OFFSET_Y
         for k, (_, sx, sy, ang) in enumerate(self.ds):
             d = self.d[k]
             abs_a = wrap(self.th + ang)
@@ -185,7 +197,8 @@ class Bot:
             py_clear = self.y + clear_d * math.sin(abs_a)
             
             x0, y0 = cx, cy
-            x1, y1 = int(px_clear / CELL), int(py_clear / CELL)
+            x1 = int(px_clear / CELL) + OFFSET_X
+            y1 = int(py_clear / CELL) + OFFSET_Y
             
             dx = abs(x1 - x0)
             dy = abs(y1 - y0)
@@ -212,13 +225,15 @@ class Bot:
             if d < 0.75:
                 px = self.x + (d + 0.042) * math.cos(abs_a)
                 py = self.y + (d + 0.042) * math.sin(abs_a)
-                ix, iy = int(px / CELL), int(py / CELL)
+                ix = int(px / CELL) + OFFSET_X
+                iy = int(py / CELL) + OFFSET_Y
                 if 0 <= ix < NX and 0 <= iy < NY:
                     self.map[iy * NX + ix] = 255
 
     def plan_to_frontier(self):
         """BFS to find the closest reachable frontier cell."""
-        cx, cy = int(self.x / CELL), int(self.y / CELL)
+        cx = int(self.x / CELL) + OFFSET_X
+        cy = int(self.y / CELL) + OFFSET_Y
         if not (0 <= cx < NX and 0 <= cy < NY): return
         
         queue = collections.deque([((cx, cy), [])])
@@ -239,7 +254,7 @@ class Bot:
                         
             if is_frontier and len(path) > 2:
                 # Target acquired! Convert grid path to real-world coordinates
-                self.path = [((ix+0.5)*CELL, (iy+0.5)*CELL) for ix, iy in path]
+                self.path = [((ix - OFFSET_X + 0.5)*CELL, (iy - OFFSET_Y + 0.5)*CELL) for ix, iy in path]
                 return
                 
             # Expand neighbors
@@ -271,8 +286,8 @@ class Bot:
                 
     def a_star(self):
         """Find fastest path to GOAL avoiding self.map obstacles."""
-        start = (int(self.x / CELL), int(self.y / CELL))
-        goal = (int(GOAL[0] / CELL), int(GOAL[1] / CELL))
+        start = (int(self.x / CELL) + OFFSET_X, int(self.y / CELL) + OFFSET_Y)
+        goal = (int(GOAL[0] / CELL) + OFFSET_X, int(GOAL[1] / CELL) + OFFSET_Y)
         
         # Cap to array bounds
         if not (0 <= start[0] < NX and 0 <= start[1] < NY): return
@@ -300,7 +315,7 @@ class Bot:
                     out.append((idx % NX, idx // NX))
                     idx = parent[idx]
                 out.reverse()
-                self.path = [((ix+0.5)*CELL, (iy+0.5)*CELL) for ix, iy in out]
+                self.path = [((ix - OFFSET_X + 0.5)*CELL, (iy - OFFSET_Y + 0.5)*CELL) for ix, iy in out]
                 return
                 
             for di, dj, cost in moves:
@@ -400,7 +415,7 @@ def main():
         return
 
     # Clear map garbage collected during the spin when coordinates were 0,0
-    bot.map = bytearray(NX * NY)
+    bot.map = bytearray([127] * (NX * NY))
     print("--- Navigating Maze to Goal ---")
     
     plan_counter = 0
@@ -435,13 +450,83 @@ def main():
                 if not bot.path:
                     bot.state = "FINISH"
                     print("--- EXPLORATION COMPLETE. TRANSITIONING TO FINISH ---")
+                    continue
                     
             bot.navigate()
             
-            # Step 4 (Color Detection) will go here!
+            # Step 4: Color Detection & Counting
+            img = bot.camera.getImageArray()
+            if img:
+                # Sample the center pixel
+                w, h = bot.camera.getWidth(), bot.camera.getHeight()
+                r, g, b = img[w // 2][h // 2]
+                
+                detected_color = None
+                # Basic RGB Thresholding
+                if b > 100 and b > r * 1.5 and b > g * 1.5:
+                    detected_color = "BLUE"
+                elif g > 100 and g > r * 1.5 and g > b * 1.5:
+                    detected_color = "GREEN"
+                elif r > 100 and r > g * 1.5 and r > b * 1.5:
+                    detected_color = "RED"
+                    
+                if detected_color:
+                    # Spatial Memory: Only count if it's > 15cm away from known tiles
+                    is_new = True
+                    for (mx, my, mcolor) in bot.tile_memory:
+                        if math.hypot(bot.x - mx, bot.y - my) < 0.15:
+                            is_new = False
+                            break
+                            
+                    if is_new:
+                        bot.tile_memory.append((bot.x, bot.y, detected_color))
+                        if detected_color == "BLUE":
+                            bot.blue_count += 1
+                            print(f"[CAMERA] Found BLUE tile! Total Blue: {bot.blue_count}")
+                        elif detected_color == "GREEN":
+                            bot.green_count += 1
+                            print(f"[CAMERA] Found GREEN tile! Total Green: {bot.green_count}")
+                        elif detected_color == "RED":
+                            # Check if it's the final end cell (must be far away from transition zone!)
+                            if math.hypot(bot.x - GOAL[0], bot.y - GOAL[1]) > 0.50:
+                                bot.final_end_cell = (bot.x, bot.y)
+                                print(f"[CAMERA] Memorized FINAL RED TILE at {bot.final_end_cell}!")
             
         elif bot.state == "FINISH":
-            bot.drive_wheels(0, 0)
+            if not bot.final_end_cell:
+                print("[ERROR] Explored whole maze but never found the final Red tile!")
+                bot.drive_wheels(0, 0)
+                break
+                
+            # Route back to the Final Red Tile
+            if not bot.path:
+                global GOAL
+                old_goal = GOAL
+                GOAL = bot.final_end_cell
+                bot.a_star()
+                GOAL = old_goal
+                
+            bot.navigate()
+            
+            # Check if we reached it
+            if math.hypot(bot.x - bot.final_end_cell[0], bot.y - bot.final_end_cell[1]) < 0.10:
+                print("=== MAZE COMPLETED! ===")
+                print(f"Final Count -> Blue: {bot.blue_count}, Green: {bot.green_count}")
+                bot.drive_wheels(0, 0)
+                
+                # Illuminate corresponding LED
+                if bot.blue_count > bot.green_count:
+                    bot.led_blue.set(1)
+                    print("Lighting BLUE LED!")
+                elif bot.green_count > bot.blue_count:
+                    bot.led_green.set(1)
+                    print("Lighting GREEN LED!")
+                else:
+                    print("Tie! Lighting both!")
+                    bot.led_blue.set(1)
+                    bot.led_green.set(1)
+                    
+                break # Challenge Finished!
 
 if __name__ == "__main__":
     main()
