@@ -102,6 +102,12 @@ class Bot:
         # SLAM Maps
         self.map = bytearray(NX * NY)
         self.path = []
+        
+        # State Machine & Hardware
+        self.state = "SECTION_1"
+        self.camera = robot.getDevice("camera")
+        self.led_blue = robot.getDevice("led_blue")
+        self.led_green = robot.getDevice("led_green")
 
     def drive_wheels(self, wl, wr):
         self.lm.setVelocity(max(-MAX_WHEEL, min(MAX_WHEEL, wl)))
@@ -318,19 +324,31 @@ def main():
     bot.a_star() # Force A* immediately on step 0!
     
     while bot.step():
-        plan_counter += 1
-        
-        # Re-plan A* path twice a second
-        if plan_counter % 30 == 0:
-            bot.a_star()
+        if bot.state == "SECTION_1":
+            plan_counter += 1
+            if plan_counter % 30 == 0:
+                bot.a_star()
+            bot.navigate()
             
-        bot.navigate()
-        
-        dist_to_goal = math.hypot(bot.x - GOAL[0], bot.y - GOAL[1])
-        if dist_to_goal < 0.15:
-            print("=== REACHED TRANSITION ZONE! ===")
+            dist_to_goal = math.hypot(bot.x - GOAL[0], bot.y - GOAL[1])
+            if dist_to_goal < 0.15:
+                print("=== REACHED TRANSITION ZONE! ===")
+                bot.drive_wheels(0, 0)
+                bot.state = "TRANSITION"
+                
+        elif bot.state == "TRANSITION":
+            print("--- ACTIVATING CAMERA & CLEARING MAP FOR MAZE ---")
+            bot.camera.enable(TIME_STEP)
+            bot.map = bytearray(NX * NY) # Clear Section 1 obstacles
+            bot.path = []
+            bot.state = "EXPLORE"
+            
+        elif bot.state == "EXPLORE":
             bot.drive_wheels(0, 0)
-            break
+            # Step 3 (Frontier Exploration) and Step 4 (Color Detection) will go here!
+            
+        elif bot.state == "FINISH":
+            bot.drive_wheels(0, 0)
 
 if __name__ == "__main__":
     main()
