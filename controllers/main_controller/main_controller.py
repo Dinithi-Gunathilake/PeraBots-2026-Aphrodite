@@ -185,6 +185,18 @@ class Bot:
     def update_map(self):
         cx = int(self.x / CELL) + OFFSET_X
         cy = int(self.y / CELL) + OFFSET_Y
+        
+        # 1. Sweep a solid physical footprint of contiguous Free Space (radius = 5 cells = 10cm)
+        # This prevents the BFS from being choked by thin raycast lines and inflation!
+        for dx in range(-5, 6):
+            for dy in range(-5, 6):
+                if dx*dx + dy*dy <= 25:
+                    ix, iy = cx+dx, cy+dy
+                    if 0 <= ix < NX and 0 <= iy < NY:
+                        if self.map[iy * NX + ix] == 127:
+                            self.map[iy * NX + ix] = 0
+                            
+        # 2. Sensor Raycasting
         for k, (_, sx, sy, ang) in enumerate(self.ds):
             d = self.d[k]
             abs_a = wrap(self.th + ang)
@@ -393,6 +405,7 @@ class Bot:
         print(f"[NAVIGATE] Path: {len(self.path)} nodes. e: {math.degrees(e):.1f}°. v_l: {v_l:.2f}, v_r: {v_r:.2f}")
         self.drive_wheels(v_l, v_r)
 def main():
+    global GOAL
     robot = Robot()
     bot = Bot(robot)
     
@@ -500,7 +513,6 @@ def main():
                 
             # Route back to the Final Red Tile
             if not bot.path:
-                global GOAL
                 old_goal = GOAL
                 GOAL = bot.final_end_cell
                 bot.a_star()
