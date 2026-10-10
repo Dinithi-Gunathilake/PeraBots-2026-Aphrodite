@@ -27,10 +27,10 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
-      name "ds_front"
-      translation 0.042 0 0.02
-      rotation 0 0 1 0
-      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      name "ds_front_0"
+      translation 0.0420 -0.0200 0.02
+      rotation 0 0 1 0.0000
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
       type "infra-red"
       children [
         Shape {
@@ -40,10 +40,10 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
-      name "ds_front_left"
-      translation 0.0297 0.0297 0.02
-      rotation 0 0 1 0.785398
-      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      name "ds_front_1"
+      translation 0.0420 -0.0100 0.02
+      rotation 0 0 1 0.0000
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
       type "infra-red"
       children [
         Shape {
@@ -53,10 +53,114 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
-      name "ds_left"
-      translation 0 0.042 0.02
+      name "ds_front_2"
+      translation 0.0420 0.0000 0.02
+      rotation 0 0 1 0.0000
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_front_3"
+      translation 0.0420 0.0100 0.02
+      rotation 0 0 1 0.0000
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_front_4"
+      translation 0.0420 0.0200 0.02
+      rotation 0 0 1 0.0000
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_back_0"
+      translation -0.0420 -0.0200 0.02
+      rotation 0 0 1 3.1416
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_back_1"
+      translation -0.0420 -0.0100 0.02
+      rotation 0 0 1 3.1416
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_back_2"
+      translation -0.0420 0.0000 0.02
+      rotation 0 0 1 3.1416
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_back_3"
+      translation -0.0420 0.0100 0.02
+      rotation 0 0 1 3.1416
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_back_4"
+      translation -0.0420 0.0200 0.02
+      rotation 0 0 1 3.1416
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_left_0"
+      translation -0.0300 0.0270 0.02
       rotation 0 0 1 1.5708
-      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
       type "infra-red"
       children [
         Shape {
@@ -66,10 +170,10 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
-      name "ds_back_left"
-      translation -0.0297 0.0297 0.02
-      rotation 0 0 1 2.35619
-      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      name "ds_left_1"
+      translation -0.0150 0.0270 0.02
+      rotation 0 0 1 1.5708
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
       type "infra-red"
       children [
         Shape {
@@ -79,10 +183,10 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
-      name "ds_back"
-      translation -0.042 0 0.02
-      rotation 0 0 1 3.14159
-      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      name "ds_left_2"
+      translation 0.0000 0.0270 0.02
+      rotation 0 0 1 1.5708
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
       type "infra-red"
       children [
         Shape {
@@ -92,10 +196,10 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
-      name "ds_back_right"
-      translation -0.0297 -0.0297 0.02
-      rotation 0 0 1 -2.35619
-      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      name "ds_left_3"
+      translation 0.0150 0.0270 0.02
+      rotation 0 0 1 1.5708
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
       type "infra-red"
       children [
         Shape {
@@ -105,10 +209,23 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
-      name "ds_right"
-      translation 0 -0.042 0.02
+      name "ds_left_4"
+      translation 0.0300 0.0270 0.02
+      rotation 0 0 1 1.5708
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_right_0"
+      translation -0.0300 -0.0270 0.02
       rotation 0 0 1 -1.5708
-      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
       type "infra-red"
       children [
         Shape {
@@ -118,10 +235,49 @@ PROTO TwoWheelRobot [
       ]
     }
     DistanceSensor {
-      name "ds_front_right"
-      translation 0.0297 -0.0297 0.02
-      rotation 0 0 1 -0.785398
-      lookupTable [ 0 0 0, 0.8 0.8 0 ]
+      name "ds_right_1"
+      translation -0.0150 -0.0270 0.02
+      rotation 0 0 1 -1.5708
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_right_2"
+      translation 0.0000 -0.0270 0.02
+      rotation 0 0 1 -1.5708
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_right_3"
+      translation 0.0150 -0.0270 0.02
+      rotation 0 0 1 -1.5708
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
+      type "infra-red"
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.2 0.8 0.2 roughness 1 metalness 0 }
+          geometry Box { size 0.008 0.008 0.008 }
+        }
+      ]
+    }
+    DistanceSensor {
+      name "ds_right_4"
+      translation 0.0300 -0.0270 0.02
+      rotation 0 0 1 -1.5708
+      lookupTable [ 0 0 0, 0.6 0.6 0 ]
       type "infra-red"
       children [
         Shape {

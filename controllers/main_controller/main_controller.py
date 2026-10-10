@@ -7,18 +7,12 @@ import math
 
 TIME_STEP = 16
 MAX_SPEED = 6.0
-
-# 8 Sensors (Name, Angle_in_degrees)
-SENSORS = [
-    ("ds_front", 0.0),
-    ("ds_front_left", 45.0),
-    ("ds_left", 90.0),
-    ("ds_back_left", 135.0),
-    ("ds_back", 180.0),
-    ("ds_back_right", -135.0),
-    ("ds_right", -90.0),
-    ("ds_front_right", -45.0)
-]
+SENSOR_NAMES = (
+    [f"ds_front_{i}" for i in range(5)] +
+    [f"ds_back_{i}" for i in range(5)] +
+    [f"ds_left_{i}" for i in range(5)] +
+    [f"ds_right_{i}" for i in range(5)]
+)
 
 def main():
     robot = Robot()
@@ -33,7 +27,7 @@ def main():
     
     # 2. Initialize Distance Sensors
     ds = {}
-    for name, _ in SENSORS:
+    for name in SENSOR_NAMES:
         sensor = robot.getDevice(name)
         sensor.enable(TIME_STEP)
         ds[name] = sensor
@@ -57,15 +51,18 @@ def main():
     print("--- STARTING AUTONOMOUS RUN ---")
     
     while robot.step(TIME_STEP) != -1:
-        # Read sensors
-        front_dist = ds['ds_front'].getValue()
-        front_right_dist = ds['ds_front_right'].getValue()
-        right_dist = ds['ds_right'].getValue()
+        # Read all 20 sensors
+        dists = {}
+        for name in SENSOR_NAMES:
+            d = ds[name].getValue()
+            if d != d: d = 0.6
+            dists[name] = d
+            
+        # Get minimum distance on the front bumper
+        front_dist = min([dists[f"ds_front_{i}"] for i in range(5)])
         
-        # Replace NaN with max range (0.8)
-        if front_dist != front_dist: front_dist = 0.8
-        if front_right_dist != front_right_dist: front_right_dist = 0.8
-        if right_dist != right_dist: right_dist = 0.8
+        # Get minimum distance on the right bumper
+        right_dist = min([dists[f"ds_right_{i}"] for i in range(5)])
         
         # Check Camera for Red Tiles
         img = camera.getImageArray()
@@ -92,27 +89,35 @@ def main():
             elif not is_red:
                 currently_on_red = False
                 
-        # Right Wall Following Logic
-        v_l = MAX_SPEED
-        v_r = MAX_SPEED
+        # --- ROBUST RIGHT WALL FOLLOWING ---
         
-        if front_dist < 0.25:
-            # Wall in front -> turn left sharply
-            v_l = -MAX_SPEED * 0.5
-            v_r = MAX_SPEED * 0.5
+        # 1. Frontal Collision Avoidance
+        if front_dist < 0.10:
+            # Obstacle directly in our path! Spin left in place to clear it.
+            v_l = -MAX_SPEED * 0.8
+            v_r = MAX_SPEED * 0.8
         else:
-            if right_dist > 0.35:
-                # Too far from right wall -> turn right to hug it
-                v_l = MAX_SPEED * 0.7
+            # 2. Constant Distance Wall Following (P Controller)
+            target_dist = 0.08  # Stay 8cm from the right wall in tight corridors
+            
+            if right_dist > 0.20:
+                # Lost the wall entirely. Curve right to find it again.
+                v_l = MAX_SPEED * 0.8
                 v_r = MAX_SPEED * 0.3
-            elif right_dist < 0.15 or front_right_dist < 0.15:
-                # Too close to right wall -> turn left to avoid scraping
-                v_l = MAX_SPEED * 0.3
-                v_r = MAX_SPEED * 0.7
             else:
-                # Good distance, go straight
-                v_l = MAX_SPEED
-                v_r = MAX_SPEED
+                # Wall is in sight, apply Proportional control to stay exactly at target_dist
+                error = target_dist - right_dist
+                Kp = 18.0
+                
+                turn_rate = Kp * error
+                
+                base_speed = MAX_SPEED * 0.8
+                v_l = base_speed - turn_rate
+                v_r = base_speed + turn_rate
+                
+                # Clamp speeds to motor limits
+                v_l = max(-MAX_SPEED, min(MAX_SPEED, v_l))
+                v_r = max(-MAX_SPEED, min(MAX_SPEED, v_r))
                 
         left_motor.setVelocity(v_l)
         right_motor.setVelocity(v_r)
