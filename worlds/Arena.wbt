@@ -16,8 +16,8 @@ WorldInfo {
   basicTimeStep 16
 }
 Viewpoint {
-  orientation -0.1454155757048913 0.32538419146940645 0.9343336867972897 0.56900315043807
-  position 1.8673235192115778 0.09799746635201538 0.08228915855296677
+  orientation -0.06766918447284791 0.06022000494379703 0.9958887651125244 0.8485182499945535
+  position 2.057734185951117 0.023959147668758396 0.04465686119851125
 }
 TexturedBackground {
   texture "empty_office"
@@ -40,4 +40,183 @@ TwoWheelRobot {
   name "team_robot_template"
   controller "main_controller"
   bodyColor 1 0.55 0
+  extensionSlot [
+    DistanceSensor {
+      translation 0.042 0 0.04
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_front"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation 0.0297 0.0297 0.04
+      rotation 0 0 1 0.785398
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_front_left"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation 0 0.042 0.04
+      rotation 0 0 1 1.570796
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_left"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation -0.0297 0.0297 0.04
+      rotation 0 0 1 2.356194
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_back_left"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation -0.042 0 0.04
+      rotation 0 0 1 3.141593
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_back"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation -0.0297 -0.0297 0.04
+      rotation 0 0 1 -2.356194
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_back_right"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation 0 -0.042 0.04
+      rotation 0 0 1 -1.570796
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_right"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation 0.0297 -0.0297 0.04
+      rotation 0 0 1 -0.785398
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_front_right"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    Camera {
+      translation -0.0158896 1.70775e-08 0.0179587
+      rotation -7.57127e-08 1 -3.07358e-07 1.5326
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.2 0.8 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.01 0.01 0.01
+          }
+        }
+      ]
+    }
+    InertialUnit {
+      name "inertial_unit"
+    }
+  ]
 }

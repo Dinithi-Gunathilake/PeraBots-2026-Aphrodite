@@ -69,8 +69,8 @@ PROTO TwoWheelRobot [
       children [ Shape { appearance PBRAppearance { baseColor 0.8 0.2 0.2 roughness 1 } geometry Box { size 0.005 0.01 0.01 } } ]
     }
     Camera {
-      translation -0.0258823 1.92771e-08 0.0175768
-      rotation -9.835109999350391e-06 -0.99999999993395 -5.947349999607177e-06 0.0382006
+      translation 0.0 0.0 0.0175768
+      rotation 0 1 0 0
       name "camera"
       width 64
       height 64
