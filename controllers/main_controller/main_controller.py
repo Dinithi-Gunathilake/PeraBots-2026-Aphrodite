@@ -11,7 +11,7 @@ import heapq
 import collections
 
 TIME_STEP = 16
-MAX_WHEEL = 6.0
+MAX_WHEEL = 10.0
 WHEEL_R = 0.02
 ARENA_W, ARENA_H = 2.44, 1.22
 GOAL = (0.17, 1.29)
@@ -555,7 +555,7 @@ def main():
             e = wrap(target_angle - bot.th)
             
             if abs(e) > 0.05:
-                speed = MAX_WHEEL * 0.6  # FASTER TURN
+                speed = MAX_WHEEL * 0.8  # FASTER TURN
                 bot.drive_wheels(-speed if e > 0 else speed, speed if e > 0 else -speed)
             else:
                 bot.drive_wheels(0, 0)
@@ -572,15 +572,23 @@ def main():
                 dist = 0.0 # Force stop
                 
             if dist > 0.02:
-                speed = MAX_WHEEL * 0.8  # FASTER DRIVE
+                speed = MAX_WHEEL * 1.0  # FASTER DRIVE
                 turn = 0.0
                 
-                # Active Corridor Centering: Repel from side walls if drifting
-                if bot.d[2] < 0.12: # Left wall too close
-                    turn -= (0.12 - bot.d[2]) * MAX_WHEEL * 3.0
-                if bot.d[6] < 0.12: # Right wall too close
-                    turn += (0.12 - bot.d[6]) * MAX_WHEEL * 3.0
+                # Active Corridor Centering (PID)
+                # Perfect center means sensor reads 0.083m (12.5cm half-cell - 4.2cm sensor offset)
+                error = 0.0
+                left_wall = bot.d[2] < 0.20
+                right_wall = bot.d[6] < 0.20
+                
+                if left_wall and right_wall:
+                    error = bot.d[2] - bot.d[6]  # Steer based on difference
+                elif left_wall:
+                    error = bot.d[2] - 0.083     # Steer based on left ideal dist
+                elif right_wall:
+                    error = 0.083 - bot.d[6]     # Steer based on right ideal dist
                     
+                turn = error * MAX_WHEEL * 2.0
                 bot.drive_wheels(speed - turn, speed + turn)
             else:
                 bot.drive_wheels(0, 0)
