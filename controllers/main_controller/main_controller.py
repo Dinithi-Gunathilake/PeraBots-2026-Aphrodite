@@ -519,37 +519,50 @@ def main():
                                 bot.final_end_cell = (bot.cx, bot.cy)
                                 print(f"[CAMERA] Memorized FINAL RED TILE at discrete {bot.final_end_cell}!")
                                 
-            # 2. Map Walls
-            def angle_to_dir(a):
-                a = wrap(a)
-                if abs(a) < 0.78: return "E"
-                if abs(wrap(a - math.pi/2)) < 0.78: return "N"
-                if abs(wrap(a - math.pi)) < 0.78: return "W"
-                if abs(wrap(a + math.pi/2)) < 0.78: return "S"
-                return "E"
-            
-            f_dir = angle_to_dir(bot.th)
-            l_dir = angle_to_dir(bot.th + math.pi/2)
-            r_dir = angle_to_dir(bot.th - math.pi/2)
-            b_dir = angle_to_dir(bot.th + math.pi)
-            
-            cell = bot.dfs_grid.setdefault((bot.cx, bot.cy), {'visited': True, 'walls': {}})
+            # 2. Map Walls (ONLY if entering an unmapped cell for the first time!)
+            cell = bot.dfs_grid.setdefault((bot.cx, bot.cy), {'visited': True, 'scanned': False, 'walls': {}})
             cell['visited'] = True
-            # Wall threshold is 0.14m: a wall is ~0.08m away, an open corridor is > 0.33m away.
-            # 0.14m prevents open turns/junctions from being misidentified as walls.
-            cell['walls'][f_dir] = bot.d[0] < 0.14
-            cell['walls'][l_dir] = bot.d[2] < 0.14
-            cell['walls'][r_dir] = bot.d[6] < 0.14
-            cell['walls'][b_dir] = False # No wall behind us if we drove here!
             
-            # Bidirectional consistency
-            opp = {"N": "S", "S": "N", "E": "W", "W": "E"}
             dir_to_offset = {"N": (0,1), "S": (0,-1), "E": (1,0), "W": (-1,0)}
-            for d_str, is_wall in cell['walls'].items():
-                if not is_wall:
-                    dx, dy = dir_to_offset[d_str]
-                    nbr = bot.dfs_grid.setdefault((bot.cx + dx, bot.cy + dy), {'visited': False, 'walls': {}})
-                    nbr['walls'][opp[d_str]] = False
+            opp = {"N": "S", "S": "N", "E": "W", "W": "E"}
+            
+            if not cell.get('scanned', False):
+                def angle_to_dir(a):
+                    a = wrap(a)
+                    if abs(a) < 0.78: return "E"
+                    if abs(wrap(a - math.pi/2)) < 0.78: return "N"
+                    if abs(wrap(a - math.pi)) < 0.78: return "W"
+                    if abs(wrap(a + math.pi/2)) < 0.78: return "S"
+                    return "E"
+                
+                f_dir = angle_to_dir(bot.th)
+                l_dir = angle_to_dir(bot.th + math.pi/2)
+                r_dir = angle_to_dir(bot.th - math.pi/2)
+                b_dir = angle_to_dir(bot.th + math.pi)
+                
+                # Check sensor readings
+                cell['walls'][f_dir] = bot.d[0] < 0.14
+                cell['walls'][l_dir] = bot.d[2] < 0.14
+                cell['walls'][r_dir] = bot.d[6] < 0.14
+                cell['walls'][b_dir] = False # The cell we drove from is open
+                
+                # Physical Arena / Maze Grid Boundary Limits:
+                # Cells must stay within discrete grid bounds (cx in [0, 8], cy in [0, 3])
+                for d_str, (dx, dy) in dir_to_offset.items():
+                    nx, ny = bot.cx + dx, bot.cy + dy
+                    if not (0 <= nx <= 8 and 0 <= ny <= 3):
+                        cell['walls'][d_str] = True  # Hard maze boundary wall!
+                
+                # Bidirectional consistency with neighbors
+                for d_str, is_wall in cell['walls'].items():
+                    if not is_wall:
+                        dx, dy = dir_to_offset[d_str]
+                        nx, ny = bot.cx + dx, bot.cy + dy
+                        if 0 <= nx <= 8 and 0 <= ny <= 3:
+                            nbr = bot.dfs_grid.setdefault((nx, ny), {'visited': False, 'scanned': False, 'walls': {}})
+                            nbr['walls'][opp[d_str]] = False
+                
+                cell['scanned'] = True
             
             # 3. Pick Next Cell
             unvisited = []
@@ -557,8 +570,9 @@ def main():
                 if not cell['walls'].get(d_str, True):
                     dx, dy = dir_to_offset[d_str]
                     nx, ny = bot.cx + dx, bot.cy + dy
-                    if (nx, ny) not in bot.dfs_grid or not bot.dfs_grid[(nx, ny)]['visited']:
-                        unvisited.append(((nx, ny), d_str))
+                    if 0 <= nx <= 8 and 0 <= ny <= 3:
+                        if (nx, ny) not in bot.dfs_grid or not bot.dfs_grid[(nx, ny)]['visited']:
+                            unvisited.append(((nx, ny), d_str))
                         
             print(f"[DFS] Cell ({bot.cx}, {bot.cy}) | Walls: {cell['walls']} | Unvisited: {[u[0] for u in unvisited]}")
             
@@ -576,7 +590,7 @@ def main():
                     bot.state = "FINISH"
                 else:
                     bot.target_cx, bot.target_cy = bot.dfs_stack.pop()
-                    print(f"[DFS] Dead end! Backtracking to cell {(bot.target_cx, bot.target_cy)}")
+                    print(f"[DFS] Backtracking from ({bot.cx}, {bot.cy}) to {(bot.target_cx, bot.target_cy)}")
                     bot.state = "DFS_TURN"
                     
         elif bot.state == "DFS_TURN":
