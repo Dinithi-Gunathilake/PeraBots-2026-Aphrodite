@@ -455,22 +455,34 @@ def main():
                 bot.state = "TRANSITION"
                 
         elif bot.state == "TRANSITION":
-            print("--- ACTIVATING CAMERA & STARTING DFS MAZE ---")
+            print("--- ENTERING SECTION 2 MAZE & STARTING DFS ---")
             bot.camera.enable(TIME_STEP)
-            bot.maze_start_x = bot.x
-            bot.maze_start_y = bot.y
             
-            # DFS grid dictionary: (cx, cy) -> {'visited': True, 'walls': {'N':True, 'S':False, ...}}
-            bot.dfs_grid = {(0,0): {'visited': True, 'walls': {}}}
-            bot.dfs_stack = [] # Empty initially! Current position is (cx, cy)
+            # Maze Column 0 is at X = 0.22m, Row 0 is at Y = 1.455m
+            bot.maze_start_x = 0.22
+            bot.maze_start_y = 1.455
             
-            bot.cx = 0
-            bot.cy = 0
-            bot.target_cx = None
-            bot.target_cy = None
-            bot.is_finishing = False
-            
-            bot.state = "DFS_SCAN"
+            # Step forward into Cell (0, 0) from the transition chamber
+            dist_to_entry = 1.455 - bot.y
+            if dist_to_entry > 0.02:
+                bot.drive_wheels(MAX_WHEEL * 0.5, MAX_WHEEL * 0.5)
+            else:
+                bot.drive_wheels(0, 0)
+                bot.x = 0.22
+                bot.y = 1.455
+                bot.th = math.pi / 2 # Facing North
+                
+                # DFS grid dictionary: (cx, cy) -> {'visited': True, 'walls': {'N':True, 'S':False, ...}}
+                bot.dfs_grid = {(0,0): {'visited': True, 'scanned': False, 'walls': {}}}
+                bot.dfs_stack = [] # Empty initially! Current position is (cx, cy)
+                
+                bot.cx = 0
+                bot.cy = 0
+                bot.target_cx = None
+                bot.target_cy = None
+                bot.is_finishing = False
+                
+                bot.state = "DFS_SCAN"
             
         elif bot.state == "DFS_SCAN":
             # 0. Physical Odometry Correction
