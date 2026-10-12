@@ -473,18 +473,35 @@ def main():
             bot.state = "DFS_SCAN"
             
         elif bot.state == "DFS_SCAN":
+            # 0. Physical Odometry Correction
+            # Snap to perfect grid mathematically
+            true_cx = bot.maze_start_x + bot.cx * 0.25
+            true_cy = bot.maze_start_y + bot.cy * 0.25
+            bot.x = true_cx
+            bot.y = true_cy
+            
+            # If there is a wall in front, use it to physically perfect the longitudinal axis!
+            if bot.d[0] < 0.20:
+                dist_to_wall = bot.d[0] + 0.042
+                if abs(wrap(bot.th - 0.0)) < 0.5: bot.x = (true_cx + 0.125) - dist_to_wall
+                elif abs(wrap(bot.th - math.pi/2)) < 0.5: bot.y = (true_cy + 0.125) - dist_to_wall
+                elif abs(wrap(bot.th - math.pi)) < 0.5: bot.x = (true_cx - 0.125) + dist_to_wall
+                elif abs(wrap(bot.th + math.pi/2)) < 0.5: bot.y = (true_cy - 0.125) + dist_to_wall
+                
             # 1. Check Camera for Color Tiles
             img = bot.camera.getImageArray()
             if img:
                 w, h = bot.camera.getWidth(), bot.camera.getHeight()
                 r, g, b = img[w // 2][h // 2]
+                print(f"[CAMERA DEBUG] Raw RGB at cell center: R={r}, G={g}, B={b}")
                 
                 detected_color = None
-                if b > 100 and b > r * 1.5 and b > g * 1.5: detected_color = "BLUE"
-                elif g > 100 and g > r * 1.5 and g > b * 1.5: detected_color = "GREEN"
-                elif r > 100 and r > g * 1.5 and r > b * 1.5: detected_color = "RED"
+                if b > 40 and b > r * 1.5 and b > g * 1.5: detected_color = "BLUE"
+                elif g > 40 and g > r * 1.5 and g > b * 1.5: detected_color = "GREEN"
+                elif r > 40 and r > g * 1.5 and r > b * 1.5: detected_color = "RED"
                 
                 if detected_color:
+                    print(f"[CAMERA] Detected {detected_color} tile beneath robot!")
                     is_new = True
                     for (mx, my, mcolor) in bot.tile_memory:
                         if math.hypot(bot.x - mx, bot.y - my) < 0.15:
@@ -555,7 +572,7 @@ def main():
             e = wrap(target_angle - bot.th)
             
             if abs(e) > 0.05:
-                speed = MAX_WHEEL * 0.8  # FASTER TURN
+                speed = MAX_WHEEL * 0.4  # SAFER TURN
                 bot.drive_wheels(-speed if e > 0 else speed, speed if e > 0 else -speed)
             else:
                 bot.drive_wheels(0, 0)
@@ -567,56 +584,30 @@ def main():
             dist = math.hypot(target_x - bot.x, target_y - bot.y)
             
             # Emergency Frontal Crash Stop (Odometry Drift Protection)
-            # If front sensor sees a wall very close (< 6cm), assume we reached the cell center early
             if bot.d[0] < 0.06:
                 dist = 0.0 # Force stop
                 
             if dist > 0.02:
-                # ----------------- STRICT CORRIDOR CENTERING -----------------
-                left_dist = bot.d[2]
-                right_dist = bot.d[6]
-                front_left = bot.d[1]   # ds_front_left (detects angled nose)
-                front_right = bot.d[7]  # ds_front_right (detects angled nose)
-
-                error = 0.0
-                left_wall = left_dist < 0.18
-                right_wall = right_dist < 0.18
-
-                if left_wall and right_wall:
-                    # Centering between both walls + orientation alignment from front diagonals
-                    lateral_error = left_dist - right_dist
-                    angle_error = front_left - front_right
-                    error = 0.7 * lateral_error + 0.3 * angle_error
-                elif left_wall:
-                    # Target nominal side clearance ~ 0.075m
-                    error = left_dist - 0.075
-                elif right_wall:
-                    # Target nominal side clearance ~ 0.075m
-                    error = 0.075 - right_dist
-
-                # Emergency Proximity Pushback (prevents front corner clipping)
-                if front_left < 0.06 or left_dist < 0.035:
-                    error = -0.05  # Strongly push right
-                elif front_right < 0.06 or right_dist < 0.035:
-                    error = 0.05   # Strongly push left
-
-                # Steering & Speed Adjustment
-                Kp = 25.0
-                turn = max(min(error * Kp, 4.0), -4.0)  # Clamp maximum turn differential
+                speed = MAX_WHEEL * 0.6  # SAFER DRIVE
+                turn = 0.0
                 
-                # Smooth forward drive with clamping to prevent skidding
-                v_fwd = MAX_WHEEL * 0.85
-                left_speed = max(min(v_fwd - turn, MAX_WHEEL), -MAX_WHEEL)
-                right_speed = max(min(v_fwd + turn, MAX_WHEEL), -MAX_WHEEL)
-                bot.drive_wheels(left_speed, right_speed)
-                # -------------------------------------------------------------
+                # Active Corridor Centering (PID)
+                # Perfect center means sensor reads 0.083m (12.5cm half-cell - 4.2cm sensor offset)
+                error = 0.0
+                left_wall = bot.d[2] < 0.20
+                right_wall = bot.d[6] < 0.20
+                
+                if left_wall and right_wall:
+                    error = bot.d[2] - bot.d[6]  # Steer based on difference
+                elif left_wall:
+                    error = bot.d[2] - 0.083     # Steer based on left ideal dist
+                elif right_wall:
+                    error = 0.083 - bot.d[6]     # Steer based on right ideal dist
+                    
+                turn = error * MAX_WHEEL * 0.5 # Very smooth PID to prevent zig-zag
+                bot.drive_wheels(speed - turn, speed + turn)
             else:
                 bot.drive_wheels(0, 0)
-                
-                # Snap mathematical odometry perfectly to the grid to erase accumulated drift!
-                bot.x = target_x
-                bot.y = target_y
-                
                 bot.cx, bot.cy = bot.target_cx, bot.target_cy
                 bot.state = "FINISH_NAV" if bot.is_finishing else "DFS_SCAN"
                 
