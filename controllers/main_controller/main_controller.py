@@ -150,9 +150,6 @@ class Bot:
             self.update_map()
         
         self.step_count += 1
-        if self.step_count % 62 == 0:
-            print(f"[ODOMETRY] X={self.x:.3f}, Y={self.y:.3f}, Theta={math.degrees(self.th):.1f}°")
-            
         return True
 
     def scan_match(self):
@@ -505,8 +502,6 @@ def main():
             if img:
                 w, h = bot.camera.getWidth(), bot.camera.getHeight()
                 r, g, b = img[w // 2][h // 2]
-                print(f"[CAMERA DEBUG] Raw RGB at cell center: R={r}, G={g}, B={b}")
-                
                 detected_color = None
                 if b > 40 and b > r * 1.5 and b > g * 1.5: detected_color = "BLUE"
                 elif g > 40 and g > r * 1.5 and g > b * 1.5: detected_color = "GREEN"
@@ -559,11 +554,15 @@ def main():
                 cell['walls'][b_dir] = False # The cell we drove from is open
                 
                 # Physical Arena / Maze Grid Boundary Limits:
-                # Cells must stay within discrete grid bounds (cx in [0, 8], cy in [0, 3])
+                # Columns: cx in [0, 8], Rows: cy in [0, 3]
                 for d_str, (dx, dy) in dir_to_offset.items():
                     nx, ny = bot.cx + dx, bot.cy + dy
                     if not (0 <= nx <= 8 and 0 <= ny <= 3):
-                        cell['walls'][d_str] = True  # Hard maze boundary wall!
+                        cell['walls'][d_str] = True  # Hard outer maze boundary wall!
+                
+                # Transition door at (0, 0): Never allow robot to turn South back into Section 1!
+                if bot.cx == 0 and bot.cy == 0:
+                    cell['walls']["S"] = True
                 
                 # Bidirectional consistency with neighbors
                 for d_str, is_wall in cell['walls'].items():
@@ -577,23 +576,24 @@ def main():
                 cell['scanned'] = True
             
             # 3. Pick Next Cell
+            # Priority Order: North ("N"), South ("S"), West ("W"), East ("E")
             unvisited = []
-            for d_str in ["N", "E", "S", "W"]: # Consistent priority order
+            for d_str in ["N", "S", "W", "E"]:
                 if not cell['walls'].get(d_str, True):
                     dx, dy = dir_to_offset[d_str]
                     nx, ny = bot.cx + dx, bot.cy + dy
                     if 0 <= nx <= 8 and 0 <= ny <= 3:
-                        if (nx, ny) not in bot.dfs_grid or not bot.dfs_grid[(nx, ny)]['visited']:
+                        nbr = bot.dfs_grid.get((nx, ny))
+                        if not nbr or not nbr.get('visited', False):
                             unvisited.append(((nx, ny), d_str))
                         
-            print(f"[DFS] Cell ({bot.cx}, {bot.cy}) | Walls: {cell['walls']} | Unvisited: {[u[0] for u in unvisited]}")
-            
             if unvisited:
                 # Explore forward
                 next_cell, direction = unvisited[0]
                 bot.dfs_stack.append((bot.cx, bot.cy))
                 bot.target_cx, bot.target_cy = next_cell
-                print(f"[DFS] Exploring {direction} to cell {next_cell}")
+                bot.dfs_grid.setdefault(next_cell, {'visited': True, 'scanned': False, 'walls': {}})['visited'] = True
+                print(f"[NAV] At ({bot.cx}, {bot.cy}) -> Next: {next_cell} ({direction})")
                 bot.state = "DFS_TURN"
             else:
                 # Backtrack
@@ -602,7 +602,7 @@ def main():
                     bot.state = "FINISH"
                 else:
                     bot.target_cx, bot.target_cy = bot.dfs_stack.pop()
-                    print(f"[DFS] Backtracking from ({bot.cx}, {bot.cy}) to {(bot.target_cx, bot.target_cy)}")
+                    print(f"[NAV] At ({bot.cx}, {bot.cy}) -> Backtrack to: {(bot.target_cx, bot.target_cy)}")
                     bot.state = "DFS_TURN"
                     
         elif bot.state == "DFS_TURN":
