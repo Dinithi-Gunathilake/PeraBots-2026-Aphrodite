@@ -462,7 +462,7 @@ def main():
             
             # DFS grid dictionary: (cx, cy) -> {'visited': True, 'walls': {'N':True, 'S':False, ...}}
             bot.dfs_grid = {(0,0): {'visited': True, 'walls': {}}}
-            bot.dfs_stack = [(0,0)] # Path from start to current
+            bot.dfs_stack = [] # Empty initially! Current position is (cx, cy)
             
             bot.cx = 0
             bot.cy = 0
@@ -535,25 +535,39 @@ def main():
             
             cell = bot.dfs_grid.setdefault((bot.cx, bot.cy), {'visited': True, 'walls': {}})
             cell['visited'] = True
-            cell['walls'][f_dir] = bot.d[0] < 0.20
-            cell['walls'][l_dir] = bot.d[2] < 0.20
-            cell['walls'][r_dir] = bot.d[6] < 0.20
+            # Wall threshold is 0.14m: a wall is ~0.08m away, an open corridor is > 0.33m away.
+            # 0.14m prevents open turns/junctions from being misidentified as walls.
+            cell['walls'][f_dir] = bot.d[0] < 0.14
+            cell['walls'][l_dir] = bot.d[2] < 0.14
+            cell['walls'][r_dir] = bot.d[6] < 0.14
             cell['walls'][b_dir] = False # No wall behind us if we drove here!
             
-            # 3. Pick Next Cell
+            # Bidirectional consistency
+            opp = {"N": "S", "S": "N", "E": "W", "W": "E"}
             dir_to_offset = {"N": (0,1), "S": (0,-1), "E": (1,0), "W": (-1,0)}
+            for d_str, is_wall in cell['walls'].items():
+                if not is_wall:
+                    dx, dy = dir_to_offset[d_str]
+                    nbr = bot.dfs_grid.setdefault((bot.cx + dx, bot.cy + dy), {'visited': False, 'walls': {}})
+                    nbr['walls'][opp[d_str]] = False
+            
+            # 3. Pick Next Cell
             unvisited = []
-            for d_str, (dx, dy) in dir_to_offset.items():
+            for d_str in ["N", "E", "S", "W"]: # Consistent priority order
                 if not cell['walls'].get(d_str, True):
+                    dx, dy = dir_to_offset[d_str]
                     nx, ny = bot.cx + dx, bot.cy + dy
                     if (nx, ny) not in bot.dfs_grid or not bot.dfs_grid[(nx, ny)]['visited']:
-                        unvisited.append((nx, ny))
+                        unvisited.append(((nx, ny), d_str))
                         
+            print(f"[DFS] Cell ({bot.cx}, {bot.cy}) | Walls: {cell['walls']} | Unvisited: {[u[0] for u in unvisited]}")
+            
             if unvisited:
                 # Explore forward
-                next_cell = unvisited[0]
+                next_cell, direction = unvisited[0]
                 bot.dfs_stack.append((bot.cx, bot.cy))
                 bot.target_cx, bot.target_cy = next_cell
+                print(f"[DFS] Exploring {direction} to cell {next_cell}")
                 bot.state = "DFS_TURN"
             else:
                 # Backtrack
@@ -562,6 +576,7 @@ def main():
                     bot.state = "FINISH"
                 else:
                     bot.target_cx, bot.target_cy = bot.dfs_stack.pop()
+                    print(f"[DFS] Dead end! Backtracking to cell {(bot.target_cx, bot.target_cy)}")
                     bot.state = "DFS_TURN"
                     
         elif bot.state == "DFS_TURN":
