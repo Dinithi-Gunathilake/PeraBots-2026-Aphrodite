@@ -579,6 +579,10 @@ def main():
                 bot.state = "DFS_FORWARD"
                 
         elif bot.state == "DFS_FORWARD":
+            dx = bot.target_cx - bot.cx
+            dy = bot.target_cy - bot.cy
+            target_angle = math.atan2(dy, dx)
+
             target_x = bot.maze_start_x + bot.target_cx * 0.25
             target_y = bot.maze_start_y + bot.target_cy * 0.25
             dist = math.hypot(target_x - bot.x, target_y - bot.y)
@@ -588,26 +592,27 @@ def main():
                 dist = 0.0 # Force stop
                 
             if dist > 0.02:
-                speed = MAX_WHEEL * 0.6  # SAFER DRIVE
-                turn = 0.0
+                speed = MAX_WHEEL * 0.6  # Controlled forward drive
                 
-                # Active Corridor Centering (PID)
-                # Perfect center means sensor reads 0.083m (12.5cm half-cell - 4.2cm sensor offset)
-                error = 0.0
-                left_wall = bot.d[2] < 0.20
-                right_wall = bot.d[6] < 0.20
+                # 1. Primary Heading Lock using IMU (guarantees robot stays on straight cardinal line)
+                heading_err = wrap(target_angle - bot.th)
+                turn = heading_err * 3.0  # Proportional heading correction
                 
+                # 2. Secondary Corridor Centering: ONLY active when bounded by BOTH parallel walls
+                # This prevents the robot from ever falsely veering towards side openings or intersections
+                left_wall = bot.d[2] < 0.16
+                right_wall = bot.d[6] < 0.16
                 if left_wall and right_wall:
-                    error = bot.d[2] - bot.d[6]  # Steer based on difference
-                elif left_wall:
-                    error = bot.d[2] - 0.083     # Steer based on left ideal dist
-                elif right_wall:
-                    error = 0.083 - bot.d[6]     # Steer based on right ideal dist
+                    wall_err = bot.d[2] - bot.d[6]
+                    turn += wall_err * 1.5  # Gentle centering nudge
                     
-                turn = error * MAX_WHEEL * 0.5 # Very smooth PID to prevent zig-zag
+                # Clamp turn to prevent sudden jerking
+                turn = max(min(turn, 2.5), -2.5)
                 bot.drive_wheels(speed - turn, speed + turn)
             else:
                 bot.drive_wheels(0, 0)
+                bot.x = target_x
+                bot.y = target_y
                 bot.cx, bot.cy = bot.target_cx, bot.target_cy
                 bot.state = "FINISH_NAV" if bot.is_finishing else "DFS_SCAN"
                 
