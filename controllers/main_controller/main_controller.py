@@ -547,10 +547,11 @@ def main():
                 r_dir = angle_to_dir(bot.th - math.pi/2)
                 b_dir = angle_to_dir(bot.th + math.pi)
                 
-                # Check sensor readings
-                cell['walls'][f_dir] = bot.d[0] < 0.14
-                cell['walls'][l_dir] = bot.d[2] < 0.14
-                cell['walls'][r_dir] = bot.d[6] < 0.14
+                # Check sensor readings: A true perpendicular wall reads ~0.075m - 0.083m.
+                # Threshold of 0.11m prevents beam-spread clipping of corner edges from being misidentified as walls.
+                cell['walls'][f_dir] = bot.d[0] < 0.11
+                cell['walls'][l_dir] = bot.d[2] < 0.11
+                cell['walls'][r_dir] = bot.d[6] < 0.11
                 cell['walls'][b_dir] = False # The cell we drove from is open
                 
                 # Physical Arena / Maze Grid Boundary Limits:
@@ -574,6 +575,15 @@ def main():
                             nbr['walls'][opp[d_str]] = False
                 
                 cell['scanned'] = True
+            else:
+                # If backtracking into an already visited cell, re-verify side walls with current sensors
+                # (helps catch openings that were shadowed by corner edges from other angles)
+                f_dir = angle_to_dir(bot.th)
+                l_dir = angle_to_dir(bot.th + math.pi/2)
+                r_dir = angle_to_dir(bot.th - math.pi/2)
+                if bot.d[0] >= 0.11 and f_dir != "S": cell['walls'][f_dir] = False
+                if bot.d[2] >= 0.11 and l_dir != "S": cell['walls'][l_dir] = False
+                if bot.d[6] >= 0.11 and r_dir != "S": cell['walls'][r_dir] = False
             
             # 3. Pick Next Cell
             # Priority Order: North ("N"), South ("S"), West ("W"), East ("E")
