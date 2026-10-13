@@ -507,25 +507,21 @@ def main():
                 elif g > 40 and g > r * 1.5 and g > b * 1.5: detected_color = "GREEN"
                 elif r > 40 and r > g * 1.5 and r > b * 1.5: detected_color = "RED"
                 
-                if detected_color:
-                    print(f"[CAMERA] Detected {detected_color} tile beneath robot!")
-                    is_new = True
-                    for (mx, my, mcolor) in bot.tile_memory:
-                        if math.hypot(bot.x - mx, bot.y - my) < 0.15:
-                            is_new = False; break
-                    if is_new:
-                        bot.tile_memory.append((bot.x, bot.y, detected_color))
-                        if detected_color == "BLUE":
-                            bot.blue_count += 1
-                            print(f"[CAMERA] Found BLUE tile! Total Blue: {bot.blue_count}")
-                        elif detected_color == "GREEN":
-                            bot.green_count += 1
-                            print(f"[CAMERA] Found GREEN tile! Total Green: {bot.green_count}")
-                        elif detected_color == "RED":
-                            if math.hypot(bot.x - GOAL[0], bot.y - GOAL[1]) > 0.50:
-                                bot.final_end_cell = (bot.cx, bot.cy)
-                                print(f"[CAMERA] Memorized FINAL RED TILE at discrete {bot.final_end_cell}!")
-                                
+            if detected_color:
+                cell_coord = (bot.cx, bot.cy)
+                if cell_coord not in bot.tile_memory:
+                    bot.tile_memory.append(cell_coord)
+                    if detected_color == "BLUE":
+                        bot.blue_count += 1
+                        print(f"[CAMERA] Found BLUE tile at ({bot.cx}, {bot.cy})! Total Blue: {bot.blue_count}")
+                    elif detected_color == "GREEN":
+                        bot.green_count += 1
+                        print(f"[CAMERA] Found GREEN tile at ({bot.cx}, {bot.cy})! Total Green: {bot.green_count}")
+                    elif detected_color == "RED":
+                        if bot.cx > 0 or bot.cy > 0:
+                            bot.final_end_cell = (bot.cx, bot.cy)
+                            print(f"[CAMERA] Memorized FINAL RED TILE at discrete {bot.final_end_cell}!")
+                            
             # 2. Map Walls (ONLY if entering an unmapped cell for the first time!)
             cell = bot.dfs_grid.setdefault((bot.cx, bot.cy), {'visited': True, 'scanned': False, 'walls': {}})
             cell['visited'] = True
@@ -548,10 +544,10 @@ def main():
                 b_dir = angle_to_dir(bot.th + math.pi)
                 
                 # Check sensor readings: A true perpendicular wall reads ~0.075m - 0.083m.
-                # Threshold of 0.11m prevents beam-spread clipping of corner edges from being misidentified as walls.
-                cell['walls'][f_dir] = bot.d[0] < 0.11
-                cell['walls'][l_dir] = bot.d[2] < 0.11
-                cell['walls'][r_dir] = bot.d[6] < 0.11
+                # Threshold of 0.15m cleanly distinguishes walls (<0.15m) from open corridors (>0.30m).
+                cell['walls'][f_dir] = bot.d[0] < 0.15
+                cell['walls'][l_dir] = bot.d[2] < 0.15
+                cell['walls'][r_dir] = bot.d[6] < 0.15
                 cell['walls'][b_dir] = False # The cell we drove from is open
                 
                 # Physical Arena / Maze Grid Boundary Limits:
@@ -575,15 +571,6 @@ def main():
                             nbr['walls'][opp[d_str]] = False
                 
                 cell['scanned'] = True
-            else:
-                # If backtracking into an already visited cell, re-verify side walls with current sensors
-                # (helps catch openings that were shadowed by corner edges from other angles)
-                f_dir = angle_to_dir(bot.th)
-                l_dir = angle_to_dir(bot.th + math.pi/2)
-                r_dir = angle_to_dir(bot.th - math.pi/2)
-                if bot.d[0] >= 0.11 and f_dir != "S": cell['walls'][f_dir] = False
-                if bot.d[2] >= 0.11 and l_dir != "S": cell['walls'][l_dir] = False
-                if bot.d[6] >= 0.11 and r_dir != "S": cell['walls'][r_dir] = False
             
             # 3. Pick Next Cell
             # Priority Order: North ("N"), South ("S"), West ("W"), East ("E")
@@ -597,13 +584,14 @@ def main():
                         if not nbr or not nbr.get('visited', False):
                             unvisited.append(((nx, ny), d_str))
                         
+            unvisited_cells = [u[0] for u in unvisited]
             if unvisited:
                 # Explore forward
                 next_cell, direction = unvisited[0]
                 bot.dfs_stack.append((bot.cx, bot.cy))
                 bot.target_cx, bot.target_cy = next_cell
                 bot.dfs_grid.setdefault(next_cell, {'visited': True, 'scanned': False, 'walls': {}})['visited'] = True
-                print(f"[NAV] At ({bot.cx}, {bot.cy}) -> Next: {next_cell} ({direction})")
+                print(f"[NAV] Current: ({bot.cx}, {bot.cy}) | Unvisited: {unvisited_cells} | Next: {next_cell} ({direction})")
                 bot.state = "DFS_TURN"
             else:
                 # Backtrack
@@ -612,7 +600,7 @@ def main():
                     bot.state = "FINISH"
                 else:
                     bot.target_cx, bot.target_cy = bot.dfs_stack.pop()
-                    print(f"[NAV] At ({bot.cx}, {bot.cy}) -> Backtrack to: {(bot.target_cx, bot.target_cy)}")
+                    print(f"[NAV] Current: ({bot.cx}, {bot.cy}) | Unvisited: [] | Backtrack to: {(bot.target_cx, bot.target_cy)}")
                     bot.state = "DFS_TURN"
                     
         elif bot.state == "DFS_TURN":
@@ -636,13 +624,14 @@ def main():
 
             target_x = bot.maze_start_x + bot.target_cx * 0.25
             target_y = bot.maze_start_y + bot.target_cy * 0.25
-            dist = math.hypot(target_x - bot.x, target_y - bot.y)
+            
+            # Progress along movement direction (immune to cross-track lateral drift)
+            remaining = (target_x - bot.x) * dx + (target_y - bot.y) * dy
             
             # Emergency Frontal Crash Stop (Odometry Drift Protection)
-            if bot.d[0] < 0.06:
-                dist = 0.0 # Force stop
+            reached = (remaining <= 0.02) or (bot.d[0] < 0.06)
                 
-            if dist > 0.02:
+            if not reached:
                 speed = MAX_WHEEL * 0.6  # Controlled forward drive
                 
                 # 1. Primary Heading Lock using IMU (guarantees robot stays on straight cardinal line)
