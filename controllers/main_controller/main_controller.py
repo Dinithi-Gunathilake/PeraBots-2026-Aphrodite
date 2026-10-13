@@ -9,6 +9,23 @@ from controller import Robot
 import math
 import heapq
 import collections
+import sys
+import os
+
+class Tee:
+    def __init__(self, filepath):
+        self.file = open(filepath, "w", buffering=1, encoding="utf-8")
+        self.stdout = sys.stdout
+    def write(self, data):
+        self.stdout.write(data)
+        self.file.write(data)
+    def flush(self):
+        self.stdout.flush()
+        self.file.flush()
+
+log_path = os.path.join(os.path.dirname(__file__), "run.log")
+sys.stdout = Tee(log_path)
+sys.stderr = sys.stdout
 
 TIME_STEP = 16
 MAX_WHEEL = 10.0
@@ -112,15 +129,20 @@ class Bot:
         # State Machine & Hardware
         self.state = "SECTION_1"
         self.camera = robot.getDevice("camera")
+        self.camera.enable(TIME_STEP)
         self.led_blue = robot.getDevice("led_blue")
         self.led_green = robot.getDevice("led_green")
         
         # Color Counting & Memory
         self.blue_count = 0
         self.green_count = 0
-        self.tile_memory = []
+        self.tile_memory = set()
         self.final_end_cell = None
         self.step_count = 0
+        self.cx = 0
+        self.cy = 0
+        self.target_cx = 0
+        self.target_cy = 0
 
     def drive_wheels(self, wl, wr):
         self.lm.setVelocity(max(-MAX_WHEEL, min(MAX_WHEEL, wl)))
@@ -143,14 +165,53 @@ class Bot:
             self.y += ds * math.sin(self.th)
         self.wl_prev, self.wr_prev = wl, wr
         
-        self.wl_prev, self.wr_prev = wl, wr
-        
         if self.state == "SECTION_1":
-            self.scan_match()
             self.update_map()
+        elif self.state in ["DFS_SCAN", "DFS_TURN", "DFS_FORWARD", "FINISH_NAV"]:
+            self.check_floor_tile()
         
         self.step_count += 1
         return True
+
+    def check_floor_tile(self):
+        img = self.camera.getImageArray()
+        if not img: return
+        w, h = self.camera.getWidth(), self.camera.getHeight()
+        r_sum = g_sum = b_sum = 0
+        cnt = 0
+        for px_i in range(w // 2 - 3, w // 2 + 4):
+            for px_j in range(h // 2 - 3, h // 2 + 4):
+                pr, pg, pb = img[px_i][px_j]
+                r_sum += pr
+                g_sum += pg
+                b_sum += pb
+                cnt += 1
+        r = r_sum / cnt
+        g = g_sum / cnt
+        b = b_sum / cnt
+        
+        detected = None
+        if b > 28 and b > r * 1.3 and b > g * 1.3:
+            detected = "BLUE"
+        elif g > 28 and g > r * 1.3 and g > b * 1.3:
+            detected = "GREEN"
+        elif r > 35 and r > g * 1.3 and r > b * 1.3:
+            detected = "RED"
+            
+        if detected:
+            cell_x = int(round((self.x - 0.22) / 0.25))
+            cell_y = int(round((self.y - 1.455) / 0.25))
+            if 0 <= cell_x <= 8 and 0 <= cell_y <= 3 and (cell_x, cell_y) not in self.tile_memory:
+                self.tile_memory.add((cell_x, cell_y))
+                if detected == "BLUE":
+                    self.blue_count += 1
+                    print(f"[CAMERA] Found BLUE tile at ({cell_x}, {cell_y})! Total Blue: {self.blue_count}")
+                elif detected == "GREEN":
+                    self.green_count += 1
+                    print(f"[CAMERA] Found GREEN tile at ({cell_x}, {cell_y})! Total Green: {self.green_count}")
+                elif detected == "RED" and (cell_x > 0 or cell_y > 0):
+                    self.final_end_cell = (cell_x, cell_y)
+                    print(f"[CAMERA] Found FINAL RED TILE at ({cell_x}, {cell_y})!")
 
     def scan_match(self):
         for k, (_, _, _, ang) in enumerate(self.ds):
@@ -202,19 +263,27 @@ class Bot:
                         if self.map[iy * NX + ix] == 127:
                             self.map[iy * NX + ix] = 0
                             
-        # 2. Sensor Raycasting
+        # 2. Sensor Raycasting with exact mounting position transforms
+        cos_th = math.cos(self.th)
+        sin_th = math.sin(self.th)
+        
         for k, (_, sx, sy, ang) in enumerate(self.ds):
             d = self.d[k]
             abs_a = wrap(self.th + ang)
             
+            # True sensor world position
+            wsx = self.x + sx * cos_th - sy * sin_th
+            wsy = self.y + sx * sin_th + sy * cos_th
+            
             # Max range for raycast clearing
-            clear_d = d if d < 0.75 else 0.75
+            clear_d = min(d, 0.75)
             
             # Bresenham to clear free space
-            px_clear = self.x + clear_d * math.cos(abs_a)
-            py_clear = self.y + clear_d * math.sin(abs_a)
+            px_clear = wsx + clear_d * math.cos(abs_a)
+            py_clear = wsy + clear_d * math.sin(abs_a)
             
-            x0, y0 = cx, cy
+            x0 = int(wsx / CELL) + OFFSET_X
+            y0 = int(wsy / CELL) + OFFSET_Y
             x1 = int(px_clear / CELL) + OFFSET_X
             y1 = int(py_clear / CELL) + OFFSET_Y
             
@@ -239,10 +308,10 @@ class Bot:
                     err += dx
                     y0 += sy_step
                     
-            # Mark Obstacle
+            # Mark Obstacle at measured physical reflection point
             if d < 0.75:
-                px = self.x + (d + 0.042) * math.cos(abs_a)
-                py = self.y + (d + 0.042) * math.sin(abs_a)
+                px = wsx + d * math.cos(abs_a)
+                py = wsy + d * math.sin(abs_a)
                 ix = int(px / CELL) + OFFSET_X
                 iy = int(py / CELL) + OFFSET_Y
                 if 0 <= ix < NX and 0 <= iy < NY:
@@ -412,7 +481,6 @@ def main():
     global GOAL
     robot = Robot()
     bot = Bot(robot)
-    
     print("--- Starting Auto-Calibration Spin ---")
     bot.drive_wheels(MAX_WHEEL, -MAX_WHEEL)
     
@@ -439,6 +507,9 @@ def main():
     bot.a_star() # Force A* immediately on step 0!
     
     while bot.step():
+        if bot.step_count % 150 == 0 and bot.state not in ["SECTION_1", "TRANSITION"]:
+            print(f"[STATUS {bot.step_count}] state={bot.state} cell=({bot.cx},{bot.cy})->({bot.target_cx},{bot.target_cy}) pos=({bot.x:.2f},{bot.y:.2f}) th={bot.th:.2f}")
+
         if bot.state == "SECTION_1":
             plan_counter += 1
             if plan_counter % 30 == 0:
@@ -452,250 +523,300 @@ def main():
                 bot.state = "TRANSITION"
                 
         elif bot.state == "TRANSITION":
-            print("--- ENTERING SECTION 2 MAZE & STARTING DFS ---")
-            bot.camera.enable(TIME_STEP)
-            
-            # Maze Column 0 is at X = 0.22m, Row 0 is at Y = 1.455m
-            bot.maze_start_x = 0.22
-            bot.maze_start_y = 1.455
-            
-            # Step forward into Cell (0, 0) from the transition chamber
-            dist_to_entry = 1.455 - bot.y
-            if dist_to_entry > 0.02:
-                bot.drive_wheels(MAX_WHEEL * 0.5, MAX_WHEEL * 0.5)
+            # 1. Align to face North (math.pi / 2) before driving through narrow corridor
+            heading_err = wrap(math.pi / 2 - bot.th)
+            if abs(heading_err) > 0.05:
+                turn = max(-3.0, min(3.0, 3.5 * heading_err))
+                if abs(turn) < 0.8: turn = 0.8 if turn > 0 else -0.8
+                bot.drive_wheels(-turn, turn)
+            elif bot.y < 1.44:
+                # Drive forward through chamber into cell (0, 0)
+                speed = 4.0
+                turn = heading_err * 3.0
+                if bot.d[2] < 0.15 and bot.d[6] < 0.15:
+                    turn += (bot.d[2] - bot.d[6]) * 2.0
+                turn = max(-2.0, min(2.0, turn))
+                bot.drive_wheels(speed - turn, speed + turn)
             else:
                 bot.drive_wheels(0, 0)
                 bot.x = 0.22
                 bot.y = 1.455
-                bot.th = math.pi / 2 # Facing North
-                
-                # DFS grid dictionary: (cx, cy) -> {'visited': True, 'walls': {'N':True, 'S':False, ...}}
-                bot.dfs_grid = {(0,0): {'visited': True, 'scanned': False, 'walls': {}}}
-                bot.dfs_stack = [] # Empty initially! Current position is (cx, cy)
-                
                 bot.cx = 0
                 bot.cy = 0
-                bot.target_cx = None
-                bot.target_cy = None
+                bot.maze_walls = {}
+                bot.dfs_visited = {(0, 0)}
+                bot.dfs_stack = []
+                bot.tile_memory = set()
                 bot.is_finishing = False
-                
+                print("[TRANSITION] Arrived at Cell (0, 0). Starting Maze Exploration!")
                 bot.state = "DFS_SCAN"
             
         elif bot.state == "DFS_SCAN":
-            # 0. Physical Odometry Correction
-            # Snap to perfect grid mathematically
-            true_cx = bot.maze_start_x + bot.cx * 0.25
-            true_cy = bot.maze_start_y + bot.cy * 0.25
-            bot.x = true_cx
-            bot.y = true_cy
-            
-            # If there is a wall in front, use it to physically perfect the longitudinal axis!
-            if bot.d[0] < 0.20:
-                dist_to_wall = bot.d[0] + 0.042
-                if abs(wrap(bot.th - 0.0)) < 0.5: bot.x = (true_cx + 0.125) - dist_to_wall
-                elif abs(wrap(bot.th - math.pi/2)) < 0.5: bot.y = (true_cy + 0.125) - dist_to_wall
-                elif abs(wrap(bot.th - math.pi)) < 0.5: bot.x = (true_cx - 0.125) + dist_to_wall
-                elif abs(wrap(bot.th + math.pi/2)) < 0.5: bot.y = (true_cy - 0.125) + dist_to_wall
-                
-            # 1. Check Camera for Color Tiles
+            # 0. Check camera for floor tile color with window average
             img = bot.camera.getImageArray()
             if img:
                 w, h = bot.camera.getWidth(), bot.camera.getHeight()
-                r, g, b = img[w // 2][h // 2]
+                r_sum = g_sum = b_sum = 0
+                pix_count = 0
+                for px_i in range(max(0, w // 2 - 3), min(w, w // 2 + 4)):
+                    for px_j in range(max(0, h // 2 - 3), min(h, h // 2 + 4)):
+                        pr, pg, pb = img[px_i][px_j]
+                        r_sum += pr
+                        g_sum += pg
+                        b_sum += pb
+                        pix_count += 1
+                r = r_sum / pix_count
+                g = g_sum / pix_count
+                b = b_sum / pix_count
+                print(f"[CAM DEBUG] ({bot.cx},{bot.cy}): R={r:.1f}, G={g:.1f}, B={b:.1f}")
+                
                 detected_color = None
-                if b > 40 and b > r * 1.5 and b > g * 1.5: detected_color = "BLUE"
-                elif g > 40 and g > r * 1.5 and g > b * 1.5: detected_color = "GREEN"
-                elif r > 40 and r > g * 1.5 and r > b * 1.5: detected_color = "RED"
+                if b > 28 and b > r * 1.25 and b > g * 1.25:
+                    detected_color = "BLUE"
+                elif g > 28 and g > r * 1.25 and g > b * 1.25:
+                    detected_color = "GREEN"
+                elif r > 28 and r > g * 1.25 and r > b * 1.25:
+                    detected_color = "RED"
+                    
+                if detected_color and (bot.cx, bot.cy) not in bot.tile_memory:
+                    bot.tile_memory.add((bot.cx, bot.cy))
+                    if detected_color == "BLUE":
+                        bot.blue_count += 1
+                        print(f"[CAMERA] Found BLUE tile at ({bot.cx}, {bot.cy})! Total Blue: {bot.blue_count}")
+                    elif detected_color == "GREEN":
+                        bot.green_count += 1
+                        print(f"[CAMERA] Found GREEN tile at ({bot.cx}, {bot.cy})! Total Green: {bot.green_count}")
+                    elif detected_color == "RED" and (bot.cx > 0 or bot.cy > 0):
+                        bot.final_end_cell = (bot.cx, bot.cy)
+                        print(f"[CAMERA] Found FINAL RED TILE at ({bot.cx}, {bot.cy})!")
+
+            # 1. Align to exact cardinal heading before reading distance sensors
+            th_w = wrap(bot.th)
+            if abs(th_w - 0.0) < 0.78:
+                cardinal_th = 0.0
+                f_dir, l_dir, r_dir, b_dir = "E", "N", "S", "W"
+            elif abs(wrap(th_w - math.pi / 2)) < 0.78:
+                cardinal_th = math.pi / 2
+                f_dir, l_dir, r_dir, b_dir = "N", "W", "E", "S"
+            elif abs(wrap(th_w - math.pi)) < 0.78:
+                cardinal_th = math.pi
+                f_dir, l_dir, r_dir, b_dir = "W", "S", "N", "E"
+            else:
+                cardinal_th = -math.pi / 2
+                f_dir, l_dir, r_dir, b_dir = "S", "E", "W", "N"
+
+            align_err = wrap(cardinal_th - bot.th)
+            if abs(align_err) > 0.04:
+                turn = max(-2.0, min(2.0, 3.5 * align_err))
+                if abs(turn) < 0.8: turn = 0.8 if turn > 0 else -0.8
+                bot.drive_wheels(-turn, turn)
+                continue
+            bot.drive_wheels(0, 0)
+
+            # 2. Map walls for current cell if not already mapped
+            if (bot.cx, bot.cy) not in bot.maze_walls:
+                WALL_THRESH = 0.125
+                walls = {
+                    f_dir: (bot.d[0] < WALL_THRESH),
+                    l_dir: (bot.d[2] < WALL_THRESH),
+                    r_dir: (bot.d[6] < WALL_THRESH),
+                    b_dir: False  # The corridor we entered from is open
+                }
                 
-                if detected_color:
-                    print(f"[CAMERA] Detected {detected_color} tile beneath robot!")
-                    is_new = True
-                    for (mx, my, mcolor) in bot.tile_memory:
-                        if math.hypot(bot.x - mx, bot.y - my) < 0.15:
-                            is_new = False; break
-                    if is_new:
-                        bot.tile_memory.append((bot.x, bot.y, detected_color))
-                        if detected_color == "BLUE":
-                            bot.blue_count += 1
-                            print(f"[CAMERA] Found BLUE tile! Total Blue: {bot.blue_count}")
-                        elif detected_color == "GREEN":
-                            bot.green_count += 1
-                            print(f"[CAMERA] Found GREEN tile! Total Green: {bot.green_count}")
-                        elif detected_color == "RED":
-                            if math.hypot(bot.x - GOAL[0], bot.y - GOAL[1]) > 0.50:
-                                bot.final_end_cell = (bot.cx, bot.cy)
-                                print(f"[CAMERA] Memorized FINAL RED TILE at discrete {bot.final_end_cell}!")
-                                
-            # 2. Map Walls (ONLY if entering an unmapped cell for the first time!)
-            cell = bot.dfs_grid.setdefault((bot.cx, bot.cy), {'visited': True, 'scanned': False, 'walls': {}})
-            cell['visited'] = True
-            
-            dir_to_offset = {"N": (0,1), "S": (0,-1), "E": (1,0), "W": (-1,0)}
-            opp = {"N": "S", "S": "N", "E": "W", "W": "E"}
-            
-            if not cell.get('scanned', False):
-                def angle_to_dir(a):
-                    a = wrap(a)
-                    if abs(a) < 0.78: return "E"
-                    if abs(wrap(a - math.pi/2)) < 0.78: return "N"
-                    if abs(wrap(a - math.pi)) < 0.78: return "W"
-                    if abs(wrap(a + math.pi/2)) < 0.78: return "S"
-                    return "E"
+                # Outer perimeter boundaries of 9x4 maze
+                if bot.cy == 3: walls["N"] = True
+                if bot.cy == 0: walls["S"] = True
+                if bot.cx == 0: walls["W"] = True
+                if bot.cx == 8: walls["E"] = True
                 
-                f_dir = angle_to_dir(bot.th)
-                l_dir = angle_to_dir(bot.th + math.pi/2)
-                r_dir = angle_to_dir(bot.th - math.pi/2)
-                b_dir = angle_to_dir(bot.th + math.pi)
-                
-                # Check sensor readings
-                cell['walls'][f_dir] = bot.d[0] < 0.14
-                cell['walls'][l_dir] = bot.d[2] < 0.14
-                cell['walls'][r_dir] = bot.d[6] < 0.14
-                cell['walls'][b_dir] = False # The cell we drove from is open
-                
-                # Physical Arena / Maze Grid Boundary Limits:
-                # Columns: cx in [0, 8], Rows: cy in [0, 3]
-                for d_str, (dx, dy) in dir_to_offset.items():
-                    nx, ny = bot.cx + dx, bot.cy + dy
-                    if not (0 <= nx <= 8 and 0 <= ny <= 3):
-                        cell['walls'][d_str] = True  # Hard outer maze boundary wall!
-                
-                # Transition door at (0, 0): Never allow robot to turn South back into Section 1!
+                # Entrance door from Section 1 is closed
                 if bot.cx == 0 and bot.cy == 0:
-                    cell['walls']["S"] = True
+                    walls["S"] = True
+                    
+                bot.maze_walls[(bot.cx, bot.cy)] = walls
+                print(f"[WALLS DEBUG] ({bot.cx}, {bot.cy}) pos=({bot.x:.3f}, {bot.y:.3f}) th={bot.th:.2f} dirs=({f_dir},{l_dir},{r_dir},{b_dir}) d0={bot.d[0]:.3f} d2={bot.d[2]:.3f} d6={bot.d[6]:.3f} -> walls={walls}")
                 
-                # Bidirectional consistency with neighbors
-                for d_str, is_wall in cell['walls'].items():
-                    if not is_wall:
-                        dx, dy = dir_to_offset[d_str]
-                        nx, ny = bot.cx + dx, bot.cy + dy
-                        if 0 <= nx <= 8 and 0 <= ny <= 3:
-                            nbr = bot.dfs_grid.setdefault((nx, ny), {'visited': False, 'scanned': False, 'walls': {}})
-                            nbr['walls'][opp[d_str]] = False
-                
-                cell['scanned'] = True
-            
-            # 3. Pick Next Cell
-            # Priority Order: North ("N"), South ("S"), West ("W"), East ("E")
+                # Bidirectional consistency: confirmed open passages remain open
+                dir_deltas = {"N": (0, 1), "S": (0, -1), "E": (1, 0), "W": (-1, 0)}
+                opp_dir = {"N": "S", "S": "N", "E": "W", "W": "E"}
+                for d_name, has_wall in walls.items():
+                    dx, dy = dir_deltas[d_name]
+                    nx, ny = bot.cx + dx, bot.cy + dy
+                    if 0 <= nx <= 8 and 0 <= ny <= 3 and (nx, ny) in bot.maze_walls:
+                        if not has_wall:
+                            bot.maze_walls[(nx, ny)][opp_dir[d_name]] = False
+
+            # 2. Pick next cell via DFS
+            dir_deltas = {"N": (0, 1), "S": (0, -1), "E": (1, 0), "W": (-1, 0)}
+            walls = bot.maze_walls[(bot.cx, bot.cy)]
             unvisited = []
-            for d_str in ["N", "S", "W", "E"]:
-                if not cell['walls'].get(d_str, True):
-                    dx, dy = dir_to_offset[d_str]
+            for d_name in ["N", "E", "S", "W"]:
+                if not walls.get(d_name, True):
+                    dx, dy = dir_deltas[d_name]
                     nx, ny = bot.cx + dx, bot.cy + dy
                     if 0 <= nx <= 8 and 0 <= ny <= 3:
-                        nbr = bot.dfs_grid.get((nx, ny))
-                        if not nbr or not nbr.get('visited', False):
-                            unvisited.append(((nx, ny), d_str))
-                        
+                        if (nx, ny) not in bot.dfs_visited:
+                            unvisited.append(((nx, ny), d_name))
+                            
             if unvisited:
-                # Explore forward
-                next_cell, direction = unvisited[0]
+                next_cell, d_name = unvisited[0]
+                bot.dfs_visited.add(next_cell)
                 bot.dfs_stack.append((bot.cx, bot.cy))
                 bot.target_cx, bot.target_cy = next_cell
-                bot.dfs_grid.setdefault(next_cell, {'visited': True, 'scanned': False, 'walls': {}})['visited'] = True
-                print(f"[NAV] At ({bot.cx}, {bot.cy}) -> Next: {next_cell} ({direction})")
+                print(f"[DFS] At ({bot.cx}, {bot.cy}) -> Move to unvisited {next_cell} ({d_name})")
                 bot.state = "DFS_TURN"
             else:
-                # Backtrack
                 if not bot.dfs_stack:
-                    print("DFS COMPLETE!")
+                    print("=== DFS COMPLETE! All reachable cells visited. ===")
                     bot.state = "FINISH"
                 else:
-                    bot.target_cx, bot.target_cy = bot.dfs_stack.pop()
-                    print(f"[NAV] At ({bot.cx}, {bot.cy}) -> Backtrack to: {(bot.target_cx, bot.target_cy)}")
+                    back_cell = bot.dfs_stack.pop()
+                    bot.target_cx, bot.target_cy = back_cell
+                    print(f"[DFS] At ({bot.cx}, {bot.cy}) [Dead End] -> Backtrack to {back_cell}")
                     bot.state = "DFS_TURN"
                     
         elif bot.state == "DFS_TURN":
-            # Orient towards target
-            dx = bot.target_cx - bot.cx
-            dy = bot.target_cy - bot.cy
-            target_angle = math.atan2(dy, dx)
-            e = wrap(target_angle - bot.th)
-            
-            if abs(e) > 0.05:
-                speed = MAX_WHEEL * 0.4  # SAFER TURN
-                bot.drive_wheels(-speed if e > 0 else speed, speed if e > 0 else -speed)
+            # If closer than 0.070m to front wall and rear is open, back up slightly for clearance
+            if bot.d[0] < 0.070 and bot.d[4] > 0.09:
+                bot.drive_wheels(-2.0, -2.0)
             else:
-                bot.drive_wheels(0, 0)
-                bot.state = "DFS_FORWARD"
+                if abs(bot.target_cx - bot.cx) > 0:
+                    target_angle = 0.0 if bot.target_cx > bot.cx else math.pi
+                else:
+                    target_angle = math.pi / 2 if bot.target_cy > bot.cy else -math.pi / 2
+                    
+                e = wrap(target_angle - bot.th)
+                if abs(e) > 0.08:
+                    turn = max(-2.5, min(2.5, 3.5 * e))
+                    if abs(turn) < 1.0: turn = 1.0 if turn > 0 else -1.0
+                    bot.drive_wheels(-turn, turn)
+                else:
+                    bot.drive_wheels(0, 0)
+                    bot.state = "DFS_FORWARD"
                 
         elif bot.state == "DFS_FORWARD":
-            dx = bot.target_cx - bot.cx
-            dy = bot.target_cy - bot.cy
-            target_angle = math.atan2(dy, dx)
-
-            target_x = bot.maze_start_x + bot.target_cx * 0.25
-            target_y = bot.maze_start_y + bot.target_cy * 0.25
-            dist = math.hypot(target_x - bot.x, target_y - bot.y)
+            target_x = 0.22 + bot.target_cx * 0.25
+            target_y = 1.455 + bot.target_cy * 0.25
             
-            # Emergency Frontal Crash Stop (Odometry Drift Protection)
-            if bot.d[0] < 0.06:
-                dist = 0.0 # Force stop
-                
-            if dist > 0.02:
-                speed = MAX_WHEEL * 0.6  # Controlled forward drive
-                
-                # 1. Primary Heading Lock using IMU (guarantees robot stays on straight cardinal line)
-                heading_err = wrap(target_angle - bot.th)
-                turn = heading_err * 3.0  # Proportional heading correction
-                
-                # 2. Secondary Corridor Centering: ONLY active when bounded by BOTH parallel walls
-                # This prevents the robot from ever falsely veering towards side openings or intersections
-                left_wall = bot.d[2] < 0.16
-                right_wall = bot.d[6] < 0.16
-                if left_wall and right_wall:
-                    wall_err = bot.d[2] - bot.d[6]
-                    turn += wall_err * 1.5  # Gentle centering nudge
-                    
-                # Clamp turn to prevent sudden jerking
-                turn = max(min(turn, 2.5), -2.5)
-                bot.drive_wheels(speed - turn, speed + turn)
+            # Progress calculation along motion axis
+            if bot.target_cx > bot.cx:
+                rem = target_x - bot.x
+            elif bot.target_cx < bot.cx:
+                rem = bot.x - target_x
+            elif bot.target_cy > bot.cy:
+                rem = target_y - bot.y
             else:
+                rem = bot.y - target_y
+
+            has_wall_ahead = (bot.d[0] < 0.16)
+            arrived = (rem <= 0.015) or (rem <= 0.035 and has_wall_ahead and bot.d[0] <= 0.080)
+            
+            if arrived:
+                print(f"[ARRIVED] At ({bot.target_cx}, {bot.target_cy}) step={bot.step_count} rem={rem:.3f} d0={bot.d[0]:.3f} actual_pos=({bot.x:.3f}, {bot.y:.3f})")
                 bot.drive_wheels(0, 0)
+                bot.cx = bot.target_cx
+                bot.cy = bot.target_cy
                 bot.x = target_x
                 bot.y = target_y
-                bot.cx, bot.cy = bot.target_cx, bot.target_cy
                 bot.state = "FINISH_NAV" if bot.is_finishing else "DFS_SCAN"
+            else:
+                speed = 4.0
+                if abs(bot.target_cx - bot.cx) > 0:
+                    nominal_y = 1.455 + bot.target_cy * 0.25
+                    base_angle = 0.0 if bot.target_cx > bot.cx else math.pi
+                    lat_err = nominal_y - bot.y
+                    correction = max(-0.35, min(0.35, lat_err * 4.0))
+                    target_angle = wrap(base_angle + (correction if base_angle == 0.0 else -correction))
+                else:
+                    nominal_x = 0.22 + bot.target_cx * 0.25
+                    base_angle = math.pi / 2 if bot.target_cy > bot.cy else -math.pi / 2
+                    lat_err = nominal_x - bot.x
+                    correction = max(-0.35, min(0.35, lat_err * 4.0))
+                    target_angle = wrap(base_angle - (correction if base_angle > 0 else -correction))
+                    
+                heading_err = wrap(target_angle - bot.th)
+                turn = heading_err * 4.0
+                
+                # Dynamic wall clearance & corridor centering
+                if bot.d[2] < 0.14 and bot.d[6] < 0.14:
+                    turn += (bot.d[2] - bot.d[6]) * 3.0
+                elif bot.d[2] < 0.11:
+                    turn += (bot.d[2] - 0.083) * 3.0
+                elif bot.d[6] < 0.11:
+                    turn += (0.083 - bot.d[6]) * 3.0
+                    
+                turn = max(-2.0, min(2.0, turn))
+                bot.drive_wheels(speed - turn, speed + turn)
                 
         elif bot.state == "FINISH":
             if not bot.final_end_cell:
-                print("[ERROR] Explored whole maze but never found the final Red tile!")
-                bot.drive_wheels(0, 0)
-                break
+                print("[WARN] Red tile not seen visually. Defaulting to (8, 3).")
+                bot.final_end_cell = (8, 3)
                 
-            # BFS to find shortest path to final_end_cell
+            print(f"[FINISH] Planning shortest path to End Cell {bot.final_end_cell}...")
+            dir_deltas = {"N": (0, 1), "S": (0, -1), "E": (1, 0), "W": (-1, 0)}
             queue = collections.deque([((bot.cx, bot.cy), [])])
-            visited = set()
+            visited = {(bot.cx, bot.cy)}
             bot.discrete_path = []
             while queue:
                 curr, path = queue.popleft()
                 if curr == bot.final_end_cell:
                     bot.discrete_path = path
                     break
-                if curr in visited: continue
-                visited.add(curr)
-                
-                cell_walls = bot.dfs_grid.get(curr, {}).get('walls', {})
-                for d_str, (dx, dy) in {"N":(0,1), "S":(0,-1), "E":(1,0), "W":(-1,0)}.items():
-                    if not cell_walls.get(d_str, True):
-                        queue.append(((curr[0]+dx, curr[1]+dy), path + [(curr[0]+dx, curr[1]+dy)]))
-            
+                walls = bot.maze_walls.get(curr, {})
+                for d_name, (dx, dy) in dir_deltas.items():
+                    if not walls.get(d_name, True):
+                        nxt = (curr[0] + dx, curr[1] + dy)
+                        if 0 <= nxt[0] <= 8 and 0 <= nxt[1] <= 3 and nxt not in visited:
+                            visited.add(nxt)
+                            queue.append((nxt, path + [nxt]))
+                            
             if not bot.discrete_path:
-                print("[ERROR] Cannot find path to end cell!")
-                bot.drive_wheels(0, 0)
-                break
+                if (bot.cx, bot.cy) == bot.final_end_cell:
+                    print("[FINISH] Already at end cell!")
+                    bot.state = "FINISH_NAV"
+                else:
+                    print(f"[FINISH WARNING] Fallback BFS to reach {bot.final_end_cell}...")
+                    queue = collections.deque([((bot.cx, bot.cy), [])])
+                    visited = {(bot.cx, bot.cy)}
+                    while queue:
+                        curr, path = queue.popleft()
+                        if curr == bot.final_end_cell:
+                            bot.discrete_path = path
+                            break
+                        walls = bot.maze_walls.get(curr, {})
+                        for d_name, (dx, dy) in dir_deltas.items():
+                            if not walls.get(d_name, False): # Treat unknown as passable in fallback
+                                nxt = (curr[0] + dx, curr[1] + dy)
+                                if 0 <= nxt[0] <= 8 and 0 <= nxt[1] <= 3 and nxt not in visited:
+                                    visited.add(nxt)
+                                    queue.append((nxt, path + [nxt]))
+                    print(f"[FINISH] Fallback path: {bot.discrete_path}")
+                    bot.is_finishing = True
+                    bot.state = "FINISH_NAV"
+            else:
+                print(f"[FINISH] Path to end cell: {bot.discrete_path}")
+                bot.is_finishing = True
+                bot.state = "FINISH_NAV"
                 
-            bot.is_finishing = True
-            bot.state = "FINISH_NAV"
-            
         elif bot.state == "FINISH_NAV":
             if not bot.discrete_path:
                 bot.drive_wheels(0, 0)
-                print("=== MAZE COMPLETED! ===")
-                print(f"Final Count -> Blue: {bot.blue_count}, Green: {bot.green_count}")
-                if bot.blue_count > bot.green_count: bot.led_blue.set(1)
-                elif bot.green_count > bot.blue_count: bot.led_green.set(1)
-                else: bot.led_blue.set(1); bot.led_green.set(1)
+                print("========================================")
+                print("===      CHALLENGE COMPLETED!        ===")
+                print(f"=== Total Blue: {bot.blue_count}, Total Green: {bot.green_count} ===")
+                if bot.blue_count > bot.green_count:
+                    print("=== Majority: BLUE -> Turning on Blue LED ===")
+                    bot.led_blue.set(1)
+                elif bot.green_count > bot.blue_count:
+                    print("=== Majority: GREEN -> Turning on Green LED ===")
+                    bot.led_green.set(1)
+                else:
+                    print("=== Tie -> Turning on Blue LED ===")
+                    bot.led_blue.set(1)
+                print("========================================")
+                while bot.step():
+                    bot.drive_wheels(0, 0)
                 break
                 
             bot.target_cx, bot.target_cy = bot.discrete_path.pop(0)

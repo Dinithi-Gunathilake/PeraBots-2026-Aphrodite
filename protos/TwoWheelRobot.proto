@@ -70,7 +70,7 @@ PROTO TwoWheelRobot [
     }
     Camera {
       translation 0.0 0.0 0.0175768
-      rotation 0 1 0 0
+      rotation 0 1 0 1.570796
       name "camera"
       width 64
       height 64
