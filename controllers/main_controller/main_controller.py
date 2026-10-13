@@ -31,7 +31,15 @@ TIME_STEP = 16
 MAX_WHEEL = 10.0
 WHEEL_R = 0.02
 ARENA_W, ARENA_H = 2.44, 1.22
-GOAL = (0.17, 1.29)
+GOAL = (0.13, 1.29)
+# GOAL = (0.17, 1.29)
+
+# Section 2 Maze Grid Constants
+MAZE_ORIGIN_X = 0.220   # Center X (meters) of Cell (0, 0)
+MAZE_ORIGIN_Y = 1.455   # Center Y (meters) of Cell (0, 0)
+MAZE_CELL_SIZE = 0.250  # Width and height of each maze cell (meters)
+MAZE_COLS = 9           # Number of columns (cx in [0, 8])
+MAZE_ROWS = 4           # Number of rows (cy in [0, 3])
 
 CELL = 0.02
 # Section 1 is 2.44 wide, Section 2 is 2.25 wide (total ~4.7m).
@@ -199,9 +207,9 @@ class Bot:
             detected = "RED"
             
         if detected:
-            cell_x = int(round((self.x - 0.22) / 0.25))
-            cell_y = int(round((self.y - 1.455) / 0.25))
-            if 0 <= cell_x <= 8 and 0 <= cell_y <= 3 and (cell_x, cell_y) not in self.tile_memory:
+            cell_x = int(round((self.x - MAZE_ORIGIN_X) / MAZE_CELL_SIZE))
+            cell_y = int(round((self.y - MAZE_ORIGIN_Y) / MAZE_CELL_SIZE))
+            if 0 <= cell_x < MAZE_COLS and 0 <= cell_y < MAZE_ROWS and (cell_x, cell_y) not in self.tile_memory:
                 self.tile_memory.add((cell_x, cell_y))
                 if detected == "BLUE":
                     self.blue_count += 1
@@ -529,7 +537,7 @@ def main():
                 turn = max(-3.0, min(3.0, 3.5 * heading_err))
                 if abs(turn) < 0.8: turn = 0.8 if turn > 0 else -0.8
                 bot.drive_wheels(-turn, turn)
-            elif bot.y < 1.44:
+            elif bot.y < 1.45:
                 # Drive forward through chamber into cell (0, 0)
                 speed = 4.0
                 turn = heading_err * 3.0
@@ -539,8 +547,8 @@ def main():
                 bot.drive_wheels(speed - turn, speed + turn)
             else:
                 bot.drive_wheels(0, 0)
-                bot.x = 0.22
-                bot.y = 1.455
+                bot.x = MAZE_ORIGIN_X
+                bot.y = MAZE_ORIGIN_Y
                 bot.cx = 0
                 bot.cy = 0
                 bot.maze_walls = {}
@@ -615,11 +623,12 @@ def main():
 
             # 2. Map walls for current cell if not already mapped
             if (bot.cx, bot.cy) not in bot.maze_walls:
-                WALL_THRESH = 0.125
+                WALL_THRESH_FRONT = 0.180  # Front walls read <= 0.165m; open corridors read >= 0.28m
+                WALL_THRESH_SIDE  = 0.125  # Side walls read <= 0.105m; open corner clipping reads >= 0.165m
                 walls = {
-                    f_dir: (bot.d[0] < WALL_THRESH),
-                    l_dir: (bot.d[2] < WALL_THRESH),
-                    r_dir: (bot.d[6] < WALL_THRESH),
+                    f_dir: (bot.d[0] < WALL_THRESH_FRONT),
+                    l_dir: (bot.d[2] < WALL_THRESH_SIDE),
+                    r_dir: (bot.d[6] < WALL_THRESH_SIDE),
                     b_dir: False  # The corridor we entered from is open
                 }
                 
@@ -654,7 +663,7 @@ def main():
                 if not walls.get(d_name, True):
                     dx, dy = dir_deltas[d_name]
                     nx, ny = bot.cx + dx, bot.cy + dy
-                    if 0 <= nx <= 8 and 0 <= ny <= 3:
+                    if 0 <= nx < MAZE_COLS and 0 <= ny < MAZE_ROWS:
                         if (nx, ny) not in bot.dfs_visited:
                             unvisited.append(((nx, ny), d_name))
                             
@@ -676,27 +685,23 @@ def main():
                     bot.state = "DFS_TURN"
                     
         elif bot.state == "DFS_TURN":
-            # If closer than 0.070m to front wall and rear is open, back up slightly for clearance
-            if bot.d[0] < 0.070 and bot.d[4] > 0.09:
-                bot.drive_wheels(-2.0, -2.0)
+            if abs(bot.target_cx - bot.cx) > 0:
+                target_angle = 0.0 if bot.target_cx > bot.cx else math.pi
             else:
-                if abs(bot.target_cx - bot.cx) > 0:
-                    target_angle = 0.0 if bot.target_cx > bot.cx else math.pi
-                else:
-                    target_angle = math.pi / 2 if bot.target_cy > bot.cy else -math.pi / 2
-                    
-                e = wrap(target_angle - bot.th)
-                if abs(e) > 0.08:
-                    turn = max(-2.5, min(2.5, 3.5 * e))
-                    if abs(turn) < 1.0: turn = 1.0 if turn > 0 else -1.0
-                    bot.drive_wheels(-turn, turn)
-                else:
-                    bot.drive_wheels(0, 0)
-                    bot.state = "DFS_FORWARD"
+                target_angle = math.pi / 2 if bot.target_cy > bot.cy else -math.pi / 2
+                
+            e = wrap(target_angle - bot.th)
+            if abs(e) > 0.08:
+                turn = max(-2.5, min(2.5, 3.5 * e))
+                if abs(turn) < 1.0: turn = 1.0 if turn > 0 else -1.0
+                bot.drive_wheels(-turn, turn)
+            else:
+                bot.drive_wheels(0, 0)
+                bot.state = "DFS_FORWARD"
                 
         elif bot.state == "DFS_FORWARD":
-            target_x = 0.22 + bot.target_cx * 0.25
-            target_y = 1.455 + bot.target_cy * 0.25
+            target_x = MAZE_ORIGIN_X + bot.target_cx * MAZE_CELL_SIZE
+            target_y = MAZE_ORIGIN_Y + bot.target_cy * MAZE_CELL_SIZE
             
             # Progress calculation along motion axis
             if bot.target_cx > bot.cx:
@@ -708,8 +713,8 @@ def main():
             else:
                 rem = bot.y - target_y
 
-            has_wall_ahead = (bot.d[0] < 0.16)
-            arrived = (rem <= 0.015) or (rem <= 0.035 and has_wall_ahead and bot.d[0] <= 0.080)
+            has_wall_ahead = (bot.d[0] < 0.18)
+            arrived = (rem <= 0.015) or (has_wall_ahead and rem < 0.030 and bot.d[0] <= 0.050)
             
             if arrived:
                 print(f"[ARRIVED] At ({bot.target_cx}, {bot.target_cy}) step={bot.step_count} rem={rem:.3f} d0={bot.d[0]:.3f} actual_pos=({bot.x:.3f}, {bot.y:.3f})")
@@ -722,13 +727,13 @@ def main():
             else:
                 speed = 4.0
                 if abs(bot.target_cx - bot.cx) > 0:
-                    nominal_y = 1.455 + bot.target_cy * 0.25
+                    nominal_y = MAZE_ORIGIN_Y + bot.target_cy * MAZE_CELL_SIZE
                     base_angle = 0.0 if bot.target_cx > bot.cx else math.pi
                     lat_err = nominal_y - bot.y
                     correction = max(-0.35, min(0.35, lat_err * 4.0))
                     target_angle = wrap(base_angle + (correction if base_angle == 0.0 else -correction))
                 else:
-                    nominal_x = 0.22 + bot.target_cx * 0.25
+                    nominal_x = MAZE_ORIGIN_X + bot.target_cx * MAZE_CELL_SIZE
                     base_angle = math.pi / 2 if bot.target_cy > bot.cy else -math.pi / 2
                     lat_err = nominal_x - bot.x
                     correction = max(-0.35, min(0.35, lat_err * 4.0))
@@ -740,10 +745,12 @@ def main():
                 # Dynamic wall clearance & corridor centering
                 if bot.d[2] < 0.14 and bot.d[6] < 0.14:
                     turn += (bot.d[2] - bot.d[6]) * 3.0
-                elif bot.d[2] < 0.11:
-                    turn += (bot.d[2] - 0.083) * 3.0
-                elif bot.d[6] < 0.11:
-                    turn += (0.083 - bot.d[6]) * 3.0
+                elif bot.d[2] < 0.055 or bot.d[1] < 0.055:
+                    dist = min(bot.d[2], bot.d[1])
+                    turn -= (0.055 - dist) * 5.0
+                elif bot.d[6] < 0.055 or bot.d[7] < 0.055:
+                    dist = min(bot.d[6], bot.d[7])
+                    turn += (0.055 - dist) * 5.0
                     
                 turn = max(-2.0, min(2.0, turn))
                 bot.drive_wheels(speed - turn, speed + turn)
@@ -767,7 +774,7 @@ def main():
                 for d_name, (dx, dy) in dir_deltas.items():
                     if not walls.get(d_name, True):
                         nxt = (curr[0] + dx, curr[1] + dy)
-                        if 0 <= nxt[0] <= 8 and 0 <= nxt[1] <= 3 and nxt not in visited:
+                        if 0 <= nxt[0] < MAZE_COLS and 0 <= nxt[1] < MAZE_ROWS and nxt not in visited:
                             visited.add(nxt)
                             queue.append((nxt, path + [nxt]))
                             
@@ -788,7 +795,7 @@ def main():
                         for d_name, (dx, dy) in dir_deltas.items():
                             if not walls.get(d_name, False): # Treat unknown as passable in fallback
                                 nxt = (curr[0] + dx, curr[1] + dy)
-                                if 0 <= nxt[0] <= 8 and 0 <= nxt[1] <= 3 and nxt not in visited:
+                                if 0 <= nxt[0] < MAZE_COLS and 0 <= nxt[1] < MAZE_ROWS and nxt not in visited:
                                     visited.add(nxt)
                                     queue.append((nxt, path + [nxt]))
                     print(f"[FINISH] Fallback path: {bot.discrete_path}")

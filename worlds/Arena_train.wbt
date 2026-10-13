@@ -1,0 +1,228 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "../protos/Arena.proto"
+EXTERNPROTO "../protos/Obstacles.proto"
+EXTERNPROTO "../protos/TwoWheelRobot.proto"
+
+WorldInfo {
+  info [
+    "Robotics Competition - Elimination Task Arena"
+    "Section 1: Obstacle Avoidance (white floor)"
+    "Section 2: Maze Search (black floor, 9x4 grid of 25cm cells)"
+  ]
+  title "Elimination Arena"
+  basicTimeStep 16
+}
+Viewpoint {
+  orientation -0.06766918447284791 0.06022000494379703 0.9958887651125244 0.8485182499945535
+  position 2.057734185951117 0.023959147668758396 0.04465686119851125
+}
+TexturedBackground {
+  texture "empty_office"
+}
+TexturedBackgroundLight {
+  texture "empty_office"
+}
+DirectionalLight {
+  direction 0.3 0.4 -1
+  intensity 2.2
+  castShadows TRUE
+}
+Arena {
+}
+Obstacles {
+}
+TwoWheelRobot {
+  translation 2.26866 0.159772 0.00245697
+  rotation -0.026775583990977556 0.010250747447849066 0.9995889106421213 2.3235643717090495
+  name "team_robot_template"
+  controller "main_controller"
+  bodyColor 1 0.55 0
+  extensionSlot [
+    DistanceSensor {
+      translation 0.042 0 0.04
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_front"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation 0.0297 0.0297 0.04
+      rotation 0 0 1 0.785398
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_front_left"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation 0 0.042 0.04
+      rotation 0 0 1 1.570796
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_left"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation -0.0297 0.0297 0.04
+      rotation 0 0 1 2.356194
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_back_left"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation -0.042 0 0.04
+      rotation 0 0 1 3.141593
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_back"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation -0.0297 -0.0297 0.04
+      rotation 0 0 1 -2.356194
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_back_right"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation 0 -0.042 0.04
+      rotation 0 0 1 -1.570796
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_right"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    DistanceSensor {
+      translation 0.0297 -0.0297 0.04
+      rotation 0 0 1 -0.785398
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.8 0.2 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.005 0.01 0.01
+          }
+        }
+      ]
+      name "ds_front_right"
+      lookupTable [
+        0 0 0
+        0.8 0.8 0
+      ]
+    }
+    Camera {
+      translation -0.0158896 1.70775e-08 0.0179587
+      rotation -7.57127e-08 1 -3.07358e-07 1.5326
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.2 0.8 0.2
+            roughness 1
+          }
+          geometry Box {
+            size 0.01 0.01 0.01
+          }
+        }
+      ]
+    }
+    InertialUnit {
+      name "inertial_unit"
+    }
+  ]
+}
+
+Robot {
+  name "rl_supervisor"
+  controller "<extern>"
+  supervisor TRUE
+}
