@@ -120,10 +120,6 @@ class Bot:
         self.green_count = 0
         self.tile_memory = []
         self.final_end_cell = None
-        self.visited_cells = set()
-        self.target_leds = []
-        self.led_state = 0
-        self.blink_timer = 0
         self.step_count = 0
 
     def drive_wheels(self, wl, wr):
@@ -479,7 +475,6 @@ def main():
                 
                 bot.cx = 0
                 bot.cy = 0
-                bot.visited_cells = set()
                 bot.target_cx = None
                 bot.target_cy = None
                 bot.is_finishing = False
@@ -503,11 +498,11 @@ def main():
                 elif abs(wrap(bot.th + math.pi/2)) < 0.5: bot.y = (true_cy - 0.125) + dist_to_wall
                 
             # 1. Check Camera for Color Tiles
-            detected_color = None
             img = bot.camera.getImageArray()
             if img:
                 w, h = bot.camera.getWidth(), bot.camera.getHeight()
                 r, g, b = img[w // 2][h // 2]
+                detected_color = None
                 if b > 40 and b > r * 1.5 and b > g * 1.5: detected_color = "BLUE"
                 elif g > 40 and g > r * 1.5 and g > b * 1.5: detected_color = "GREEN"
                 elif r > 40 and r > g * 1.5 and r > b * 1.5: detected_color = "RED"
@@ -526,14 +521,8 @@ def main():
                         if bot.cx > 0 or bot.cy > 0:
                             bot.final_end_cell = (bot.cx, bot.cy)
                             print(f"[CAMERA] Memorized FINAL RED TILE at discrete {bot.final_end_cell}!")
-
-            # 2. Track Unique Visited Cells Counter
-            is_new_cell = (bot.cx, bot.cy) not in bot.visited_cells
-            bot.visited_cells.add((bot.cx, bot.cy))
-            if is_new_cell:
-                print(f"[CELL COUNT] Visited: {len(bot.visited_cells)}/36 cells")
                             
-            # 3. Map Walls (ONLY if entering an unmapped cell for the first time!)
+            # 2. Map Walls (ONLY if entering an unmapped cell for the first time!)
             cell = bot.dfs_grid.setdefault((bot.cx, bot.cy), {'visited': True, 'scanned': False, 'walls': {}})
             cell['visited'] = True
             
@@ -582,48 +571,38 @@ def main():
                             nbr['walls'][opp[d_str]] = False
                 
                 cell['scanned'] = True
-
-            # 4. Check if all 36 cells have been visited
-            if len(bot.visited_cells) >= 36:
-                if not bot.final_end_cell:
-                    bot.final_end_cell = (8, 3)
-                print(f"[CELL COUNT] All 36 cells visited ({len(bot.visited_cells)}/36)!")
-                print(f"Going to the final target at {bot.final_end_cell}")
-                bot.state = "FINISH"
-            else:
-                # 5. Pick Next Cell
-                # Priority Order: North ("N"), South ("S"), West ("W"), East ("E")
-                unvisited = []
-                for d_str in ["N", "S", "W", "E"]:
-                    if not cell['walls'].get(d_str, True):
-                        dx, dy = dir_to_offset[d_str]
-                        nx, ny = bot.cx + dx, bot.cy + dy
-                        if 0 <= nx <= 8 and 0 <= ny <= 3:
-                            nbr = bot.dfs_grid.get((nx, ny))
-                            if not nbr or not nbr.get('visited', False):
-                                unvisited.append(((nx, ny), d_str))
-                            
-                unvisited_cells = [u[0] for u in unvisited]
-                if unvisited:
-                    # Explore forward
-                    next_cell, direction = unvisited[0]
-                    bot.dfs_stack.append((bot.cx, bot.cy))
-                    bot.target_cx, bot.target_cy = next_cell
-                    bot.dfs_grid.setdefault(next_cell, {'visited': True, 'scanned': False, 'walls': {}})['visited'] = True
-                    print(f"[NAV] Current: ({bot.cx}, {bot.cy}) | Visited: {len(bot.visited_cells)}/36 | Unvisited: {unvisited_cells} | Next: {next_cell} ({direction})")
-                    bot.state = "DFS_TURN"
-                else:
-                    # Backtrack
-                    if not bot.dfs_stack:
-                        if not bot.final_end_cell:
-                            bot.final_end_cell = (8, 3)
-                        print(f"Going to the final target at {bot.final_end_cell}")
-                        bot.state = "FINISH"
-                    else:
-                        bot.target_cx, bot.target_cy = bot.dfs_stack.pop()
-                        print(f"[NAV] Current: ({bot.cx}, {bot.cy}) | Visited: {len(bot.visited_cells)}/36 | Unvisited: [] | Backtrack to: {(bot.target_cx, bot.target_cy)}")
-                        bot.state = "DFS_TURN"
+            
+            # 3. Pick Next Cell
+            # Priority Order: North ("N"), South ("S"), West ("W"), East ("E")
+            unvisited = []
+            for d_str in ["N", "S", "W", "E"]:
+                if not cell['walls'].get(d_str, True):
+                    dx, dy = dir_to_offset[d_str]
+                    nx, ny = bot.cx + dx, bot.cy + dy
+                    if 0 <= nx <= 8 and 0 <= ny <= 3:
+                        nbr = bot.dfs_grid.get((nx, ny))
+                        if not nbr or not nbr.get('visited', False):
+                            unvisited.append(((nx, ny), d_str))
                         
+            unvisited_cells = [u[0] for u in unvisited]
+            if unvisited:
+                # Explore forward
+                next_cell, direction = unvisited[0]
+                bot.dfs_stack.append((bot.cx, bot.cy))
+                bot.target_cx, bot.target_cy = next_cell
+                bot.dfs_grid.setdefault(next_cell, {'visited': True, 'scanned': False, 'walls': {}})['visited'] = True
+                print(f"[NAV] Current: ({bot.cx}, {bot.cy}) | Unvisited: {unvisited_cells} | Next: {next_cell} ({direction})")
+                bot.state = "DFS_TURN"
+            else:
+                # Backtrack
+                if not bot.dfs_stack:
+                    print("DFS COMPLETE!")
+                    bot.state = "FINISH"
+                else:
+                    bot.target_cx, bot.target_cy = bot.dfs_stack.pop()
+                    print(f"[NAV] Current: ({bot.cx}, {bot.cy}) | Unvisited: [] | Backtrack to: {(bot.target_cx, bot.target_cy)}")
+                    bot.state = "DFS_TURN"
+                    
         elif bot.state == "DFS_TURN":
             # Orient towards target
             dx = bot.target_cx - bot.cx
@@ -679,73 +658,47 @@ def main():
                 
         elif bot.state == "FINISH":
             if not bot.final_end_cell:
-                bot.final_end_cell = (8, 3)
+                print("[ERROR] Explored whole maze but never found the final Red tile!")
+                bot.drive_wheels(0, 0)
+                break
                 
-            if (bot.cx, bot.cy) == bot.final_end_cell:
-                bot.discrete_path = []
-                bot.is_finishing = True
-                bot.state = "FINISH_NAV"
-            else:
-                # BFS to find shortest path to final_end_cell
-                queue = collections.deque([((bot.cx, bot.cy), [])])
-                visited = set([(bot.cx, bot.cy)])
-                bot.discrete_path = []
-                while queue:
-                    curr, path = queue.popleft()
-                    if curr == bot.final_end_cell:
-                        bot.discrete_path = path
-                        break
-                    
-                    cell_walls = bot.dfs_grid.get(curr, {}).get('walls', {})
-                    for d_str, (dx, dy) in {"N":(0,1), "S":(0,-1), "E":(1,0), "W":(-1,0)}.items():
-                        if not cell_walls.get(d_str, True):
-                            nx, ny = curr[0] + dx, curr[1] + dy
-                            if 0 <= nx <= 8 and 0 <= ny <= 3 and (nx, ny) not in visited:
-                                visited.add((nx, ny))
-                                queue.append(((nx, ny), path + [(nx, ny)]))
+            # BFS to find shortest path to final_end_cell
+            queue = collections.deque([((bot.cx, bot.cy), [])])
+            visited = set()
+            bot.discrete_path = []
+            while queue:
+                curr, path = queue.popleft()
+                if curr == bot.final_end_cell:
+                    bot.discrete_path = path
+                    break
+                if curr in visited: continue
+                visited.add(curr)
                 
-                if not bot.discrete_path:
-                    print(f"[ERROR] Cannot find path from ({bot.cx}, {bot.cy}) to end cell {bot.final_end_cell}!")
-                    bot.drive_wheels(0, 0)
-                    bot.state = "FINISH_NAV"
-                else:
-                    bot.is_finishing = True
-                    bot.state = "FINISH_NAV"
+                cell_walls = bot.dfs_grid.get(curr, {}).get('walls', {})
+                for d_str, (dx, dy) in {"N":(0,1), "S":(0,-1), "E":(1,0), "W":(-1,0)}.items():
+                    if not cell_walls.get(d_str, True):
+                        queue.append(((curr[0]+dx, curr[1]+dy), path + [(curr[0]+dx, curr[1]+dy)]))
+            
+            if not bot.discrete_path:
+                print("[ERROR] Cannot find path to end cell!")
+                bot.drive_wheels(0, 0)
+                break
+                
+            bot.is_finishing = True
+            bot.state = "FINISH_NAV"
             
         elif bot.state == "FINISH_NAV":
             if not bot.discrete_path:
                 bot.drive_wheels(0, 0)
                 print("=== MAZE COMPLETED! ===")
-                print(f"Reached final target at ({bot.cx}, {bot.cy})!")
                 print(f"Final Count -> Blue: {bot.blue_count}, Green: {bot.green_count}")
-                bot.led_blue.set(0)
-                bot.led_green.set(0)
-                if bot.blue_count > bot.green_count:
-                    bot.target_leds = [bot.led_blue]
-                    print("[LED] Blinking BLUE LED (Majority Blue)")
-                elif bot.green_count > bot.blue_count:
-                    bot.target_leds = [bot.led_green]
-                    print("[LED] Blinking GREEN LED (Majority Green)")
-                else:
-                    bot.target_leds = [bot.led_blue, bot.led_green]
-                    print("[LED] Blinking BOTH LEDs (Tie)")
-                bot.led_state = 1
-                for led in bot.target_leds:
-                    led.set(bot.led_state)
-                bot.blink_timer = 0
-                bot.state = "BLINK_LED"
-            else:
-                bot.target_cx, bot.target_cy = bot.discrete_path.pop(0)
-                print(f"[FINAL NAV] Heading to ({bot.target_cx}, {bot.target_cy})")
-                bot.state = "DFS_TURN"
+                if bot.blue_count > bot.green_count: bot.led_blue.set(1)
+                elif bot.green_count > bot.blue_count: bot.led_green.set(1)
+                else: bot.led_blue.set(1); bot.led_green.set(1)
+                break
                 
-        elif bot.state == "BLINK_LED":
-            bot.drive_wheels(0, 0)
-            bot.blink_timer += 1
-            if bot.blink_timer % 16 == 0:
-                bot.led_state = 1 - bot.led_state
-                for led in bot.target_leds:
-                    led.set(bot.led_state)
+            bot.target_cx, bot.target_cy = bot.discrete_path.pop(0)
+            bot.state = "DFS_TURN"
 
 if __name__ == "__main__":
     main()
