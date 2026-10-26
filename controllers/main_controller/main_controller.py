@@ -120,7 +120,6 @@ class Bot:
         self.green_count = 0
         self.tile_memory = []
         self.final_end_cell = None
-        self.pause_timer = 0
         self.step_count = 0
 
     def drive_wheels(self, wl, wr):
@@ -678,17 +677,9 @@ def main():
                 cell.scanned = True
             cell.visited = True
             
-            # 3. Print coordinate and pause for 1 second
+            # 3. Plan next action immediately for continuous exploration
             print(f"Current cell: ({bot.col}, {bot.row})")
-            bot.drive_wheels(0, 0)
-            bot.pause_timer = int(round(1.0 / (TIME_STEP / 1000.0)))
-            bot.state = "S2_PAUSE"
-
-        elif bot.state == "S2_PAUSE":
-            bot.drive_wheels(0, 0)
-            bot.pause_timer -= 1
-            if bot.pause_timer <= 0:
-                bot.state = "S2_PLAN"
+            bot.state = "S2_PLAN"
 
         elif bot.state == "S2_PLAN":
             # If we are in finish mode and finished the path back to the Red tile:
