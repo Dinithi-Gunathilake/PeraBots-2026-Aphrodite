@@ -1,35 +1,77 @@
-# Section 2 Implementation Plan: Autonomous Maze Exploration
+# Section 2 Implementation Plan: Frontier Flood-Fill Autonomous Exploration
 
-This document outlines the exact logic we will inject into `main_controller.py` to seamlessly complete the transition into Section 2, fully explore the 36-cell maze, count the colored tiles, and reach the final designated end cell.
+This document outlines the architecture to replace Section 2 in `main_controller.py` with a **Frontier-Based Flood-Fill / BFS Exploration System** tailored to the competition requirements and the `TwoWheelRobot.proto` hardware.
 
-## 1. The State Machine
-To handle the radically different objectives of Section 1 (Obstacle Avoidance) and Section 2 (Maze Exploration), the controller will be restructured into a State Machine.
+---
 
-*   **`STATE_SECTION_1`**: The robot runs the current A* + Repulsive Steering algorithm. It constantly checks its physical distance to the known Transition Zone coordinate: `(0.22, 1.27)`.
-*   **`STATE_TRANSITION`**: Triggered when the robot is within 10cm of the transition cell. It will briefly clear the A* map (to forget the Section 1 obstacles) and activate the downward-facing Camera.
-*   **`STATE_EXPLORE`**: The primary maze-solving mode using Frontier Exploration.
-*   **`STATE_FINISH`**: Triggered when the maze is 100% explored. The robot routes itself to the final End Cell, comes to a dead stop, and illuminates the LED.
+## 1. System Invariants & Grid Representation
 
-## 2. Hardware Activation (The Camera)
-Since the `Camera` node is already physically mounted on the `TwoWheelRobot.proto`, we only need to activate it in the code.
-*   The camera will be enabled at the start of `STATE_EXPLORE`.
-*   During every simulation step, we will extract the RGB values of the center pixels of the camera feed to determine the floor color beneath the robot.
+* **Maze Grid**: 4 rows $\times$ 9 columns ($36$ cells total).
+  * Column indices: `col` $\in [0, 8]$ ($X = 0.22\text{ m} + \text{col} \times 0.25\text{ m}$).
+  * Row indices: `row` $\in [0, 3]$ ($Y = 1.455\text{ m} + \text{row} \times 0.25\text{ m}$).
+  * Clear interior width per cell: $\approx 23.8\text{ cm}$.
+* **Edge States**: Each passage between adjacent cells has one of three states:
+  * `"unknown"`: Not yet observed by distance sensors.
+  * `"wall"`: Confirmed closed wall.
+  * `"open"`: Confirmed traversable passage.
+  * **Bidirectional consistency**: Any update to edge $(c, r) \to \text{dir}$ immediately updates the opposite edge of the neighbor.
+* **Exploration Completion Invariant**:
+  Exploration is complete **only** when all reachable cells have no `"unknown"` edges.
 
-## 3. Frontier-Based Maze Exploration
-Because the maze walls and dead ends are randomized, we cannot use a fixed A* goal. Instead, we use Frontier Exploration to guarantee 100% coverage.
-*   **Frontiers**: A "Frontier" is any empty cell on the map that borders an unknown (unmapped) area.
-*   **Dynamic Goal**: The A* algorithm will continuously route the robot to the *nearest* Frontier cell.
-*   As the robot drives to a Frontier, its distance sensors map the walls around it, revealing new corridors and turning unknown space into known space.
-*   Once all corridors and dead ends have been seen, the list of Frontiers becomes empty. This mathematically proves the entire maze has been explored.
+---
 
-## 4. Tile Detection & Counting
-While in `STATE_EXPLORE`, the robot actively monitors the camera feed.
-*   **Color Thresholding**: If the camera sees strong Blue (`B > R` and `B > G`) or strong Green (`G > R` and `G > B`), it identifies a tile.
-*   **Spatial Memory**: To prevent double-counting a tile when the robot spins around or backtracks out of a dead end, it will record the `(X, Y)` coordinate of the detected tile. It will only increment the `blue_count` or `green_count` if the new detection is at least 15cm away from any previously memorized tile.
+## 2. Early Red End Tile Discovery & Return Policy
 
-## 5. End Cell Navigation & LED Indication
-*   The End Cell is marked by a Red floor tile.
-*   The robot will see *two* Red tiles during its run: The entrance (transition cell) and the exit (end cell).
-*   During exploration, if it detects a Red tile that is far away from its starting Transition coordinate `(0.22, 1.27)`, it memorizes it as the `final_end_cell_coordinate`.
-*   When the Frontier list empties, it switches to `STATE_FINISH`. It sets its A* goal to the `final_end_cell_coordinate`.
-*   Upon arrival, it commands `drive_wheels(0, 0)`, compares the counters, and calls `led_blue.set(1)` or `led_green.set(1)` based on the majority.
+> [!IMPORTANT]
+> **Never Stop Early on the Red Tile**  
+> If the robot enters the designated Red end tile cell while unvisited cells or unresolved passages still exist, it must **memorize the position, continue exploration, and return later**.
+
+* **Memorization**:
+  When the camera detects the Red tile at $(col, row) \neq (0, 0)$:
+  - Record `red_cell_coord = (col, row)` in persistent memory.
+  - Mark `cell.color = "red"` and `cell.visited = True`.
+  - Log: `[CAMERA] Memorized FINAL RED TILE at (col, row)! Continuing exploration...`
+* **Continuation**:
+  - The robot does **not** stop or switch to finish mode.
+  - It treats the Red cell as a normal visited node and queries the BFS planner for the nearest unresolved frontier.
+  - It systematically completes the exploration of all remaining unvisited corridors and cells.
+* **Return Navigation**:
+  - When all reachable frontiers and passages are 100% resolved:
+  - Run BFS from the robot's current cell over known open corridors directly to `red_cell_coord`.
+  - Follow the computed shortest path back to the Red end cell.
+  - Stop at the exact center of the Red cell, illuminate the majority color LED (`led_blue` or `led_green`), and turn off motors.
+
+---
+
+## 3. Modular Architecture
+
+1. **`MazeMap` Class**:
+   - Represents the $4 \times 9$ grid of `Cell` objects.
+   - Enforces outer boundary walls and seals the transition door back to Section 1.
+   - Updates edges bidirectionally.
+   - Caches observed tile colors (`"blue"`, `"green"`, `"red"`) and stores `red_cell_coord`.
+2. **`FloodFillPlanner` (BFS Engine)**:
+   - When immediate unvisited passages exist: prioritizes immediate forward movement.
+   - When in a dead end or fully visited junction: runs BFS over known `"open"` passages to find the shortest path to the **nearest cell with an unresolved edge / unvisited neighbor**.
+   - Generates a step-by-step cardinal path $[(c_1, r_1), (c_2, r_2), \dots]$.
+   - Generates the final BFS route to `red_cell_coord` upon exploration completion.
+3. **`MotionController`**:
+   - `turn_to_cardinal(heading)`: Closed-loop turn using IMU yaw feedback.
+   - `move_one_cell()`: Closed-loop drive along cardinal line with IMU heading lock and dual parallel-wall centering.
+   - Odometry snap to exact cell center upon arrival.
+4. **`State Machine` Flow**:
+   - `S2_INSPECT`: Inspect floor color and 4 cardinal distance sensors; update map. (If Red: memorize coordinate and keep exploring).
+   - `S2_PLAN`: Query planner for next cell on route to nearest frontier (or red cell if finished).
+   - `S2_TURN`: Align robot with target direction.
+   - `S2_MOVE`: Drive forward one cell to target.
+   - `S2_FINISH_ROUTE`: BFS navigation back to Red cell after 100% exploration.
+   - `S2_FINISH_ALIGN`: Stop at center of Red cell, determine majority color, illuminate LED (`led_blue` or `led_green`), stop motors.
+
+---
+
+## 4. Migration Roadmap
+
+1. **Phase 1**: Add `Cell`, `MazeMap`, and BFS pathfinding functions as clean, isolated helpers.
+2. **Phase 2**: Replace Section 2 state machine (lines 473–735 of `main_controller.py`) with the new modular states (`S2_INSPECT`, `S2_PLAN`, `S2_TURN`, `S2_MOVE`, `S2_FINISH_ROUTE`, `S2_FINISH_ALIGN`).
+3. **Phase 3**: Connect the camera color detector and 8-sensor distance mapping to `S2_INSPECT`.
+4. **Phase 4**: Test in Webots to verify 100% cell coverage, accurate single-count of Blue/Green tiles, early Red tile memorization, return to Red cell, and LED activation.
