@@ -1,0 +1,56 @@
+At (0, 0) -> Next: (0, 1) (N) | Visited count: 2
+At (0, 1) -> Next: (0, 2) (N) | Visited count: 3
+At (0, 2) -> Next: (0, 3) (N) | Visited count: 4
+At (0, 3) -> Next: (1, 3) (E) | Visited count: 5
+At (1, 3) -> Next: (2, 3) (E) | Visited count: 6
+At (2, 3) -> Backtrack to (1, 3)
+At (1, 3) -> Backtrack to (0, 3)
+At (0, 3) -> Backtrack to (0, 2)
+At (0, 2) -> Next: (1, 2) (E) | Visited count: 7
+At (1, 2) -> Next: (1, 1) (S) | Visited count: 8
+At (1, 1) -> Backtrack to (1, 2)
+At (1, 2) -> Next: (2, 2) (E) | Visited count: 9
+At (2, 2) -> Next: (2, 1) (S) | Visited count: 10
+At (2, 1) -> Next: (2, 0) (S) | Visited count: 11
+At (2, 0) -> Next: (1, 0) (W) | Visited count: 12
+At (1, 0) -> Backtrack to (2, 0)
+At (2, 0) -> Next: (3, 0) (E) | Visited count: 13
+At (3, 0) -> Next: (4, 0) (E) | Visited count: 14
+At (4, 0) -> Backtrack to (3, 0)
+At (3, 0) -> Backtrack to (2, 0)
+At (2, 0) -> Backtrack to (2, 1)
+At (2, 1) -> Next: (3, 1) (E) | Visited count: 15
+At (3, 1) -> Next: (4, 1) (E) | Visited count: 16
+At (4, 1) -> Next: (5, 1) (E) | Visited count: 17
+At (5, 1) -> Next: (5, 2) (N) | Visited count: 18
+At (5, 2) -> Next: (4, 2) (W) | Visited count: 19
+At (4, 2) -> Next: (4, 3) (N) | Visited count: 20
+At (4, 3) -> Next: (3, 3) (W) | Visited count: 21
+At (3, 3) -> Next: (3, 2) (S) | Visited count: 22
+At (3, 2) -> Backtrack to (3, 3)
+At (3, 3) -> Backtrack to (4, 3)
+At (4, 3) -> Next: (5, 3) (E) | Visited count: 23
+At (5, 3) -> Backtrack to (4, 3)
+At (4, 3) -> Backtrack to (4, 2)
+At (4, 2) -> Backtrack to (5, 2)
+At (5, 2) -> Next: (6, 2) (E) | Visited count: 24
+At (6, 2) -> Next: (6, 3) (N) | Visited count: 25
+At (6, 3) -> Next: (7, 3) (E) | Visited count: 26
+At (7, 3) -> Backtrack to (6, 3)
+At (6, 3) -> Backtrack to (6, 2)
+At (6, 2) -> Backtrack to (5, 2)
+At (5, 2) -> Backtrack to (5, 1)
+At (5, 1) -> Next: (5, 0) (S) | Visited count: 27
+At (5, 0) -> Next: (6, 0) (E) | Visited count: 28
+At (6, 0) -> Next: (7, 0) (E) | Visited count: 29
+At (7, 0) -> Backtrack to (6, 0)
+At (6, 0) -> Backtrack to (5, 0)
+At (5, 0) -> Backtrack to (5, 1)
+At (5, 1) -> Next: (6, 1) (E) | Visited count: 30
+At (6, 1) -> Next: (7, 1) (E) | Visited count: 31
+At (7, 1) -> Next: (7, 2) (N) | Visited count: 32
+At (7, 2) -> Next: (8, 2) (E) | Visited count: 33
+At (8, 2) -> Next: (8, 3) (N) | Visited count: 34
+At (8, 3) -> Backtrack to (8, 2)
+At (8, 2) -> Next: (8, 1) (S) | Visited count: 35
+At (8, 1) -> Next: (8, 0) (S) | Visited count: 36

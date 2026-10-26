@@ -120,6 +120,7 @@ class Bot:
         self.green_count = 0
         self.tile_memory = []
         self.final_end_cell = None
+        self.pause_timer = 0
         self.step_count = 0
 
     def drive_wheels(self, wl, wr):
@@ -408,6 +409,162 @@ class Bot:
             v_l = speed - turn
             v_r = speed + turn
         self.drive_wheels(v_l, v_r)
+
+# ==============================================================================
+# SECTION 2: MAP REPRESENTATION & BFS EXPLORATION ENGINE
+# ==============================================================================
+
+DIR_OFFSET = {"N": (0, 1), "S": (0, -1), "E": (1, 0), "W": (-1, 0)}
+OPP_DIR = {"N": "S", "S": "N", "E": "W", "W": "E"}
+
+def angle_to_dir(a):
+    a = wrap(a)
+    if abs(a) < 0.785:
+        return "E"
+    if abs(wrap(a - math.pi / 2)) < 0.785:
+        return "N"
+    if abs(wrap(a - math.pi)) < 0.785:
+        return "W"
+    if abs(wrap(a + math.pi / 2)) < 0.785:
+        return "S"
+    return "E"
+
+class Cell:
+    def __init__(self, col, row):
+        self.col = col
+        self.row = row
+        self.visited = False
+        self.scanned = False
+        self.color = "unknown"  # "none", "BLUE", "GREEN", "RED"
+        self.edges = {
+            "N": "unknown",
+            "S": "unknown",
+            "E": "unknown",
+            "W": "unknown"
+        }
+
+class MazeMap:
+    def __init__(self):
+        self.grid = {}
+        for c in range(9):
+            for r in range(4):
+                self.grid[(c, r)] = Cell(c, r)
+        
+        # Outer boundary perimeter walls
+        for c in range(9):
+            self.grid[(c, 0)].edges["S"] = "wall"
+            self.grid[(c, 3)].edges["N"] = "wall"
+        for r in range(4):
+            self.grid[(0, r)].edges["W"] = "wall"
+            self.grid[(8, r)].edges["E"] = "wall"
+            
+        # Transition doorway South of (0, 0) is closed
+        self.grid[(0, 0)].edges["S"] = "wall"
+        
+        self.red_cell_coord = None
+        self.blue_count = 0
+        self.green_count = 0
+        self.tile_memory = set()
+
+    def set_edge(self, c, r, d, state):
+        if (c, r) not in self.grid:
+            return
+        # Outer boundaries can never be opened
+        if c == 0 and d == "W": return
+        if c == 8 and d == "E": return
+        if r == 0 and d == "S": return
+        if r == 3 and d == "N": return
+        if c == 0 and r == 0 and d == "S": return
+
+        self.grid[(c, r)].edges[d] = state
+        
+        dx, dy = DIR_OFFSET[d]
+        nc, nr = c + dx, r + dy
+        if (nc, nr) in self.grid:
+            self.grid[(nc, nr)].edges[OPP_DIR[d]] = state
+
+    def record_color(self, c, r, detected_color):
+        if (c, r) in self.tile_memory:
+            return
+        
+        cell = self.grid.get((c, r))
+        if cell:
+            cell.color = detected_color
+            
+        if detected_color in ("BLUE", "GREEN", "RED"):
+            self.tile_memory.add((c, r))
+            if detected_color == "BLUE":
+                self.blue_count += 1
+                print(f"[CAMERA] Found BLUE tile at ({c}, {r})! Total Blue: {self.blue_count}")
+            elif detected_color == "GREEN":
+                self.green_count += 1
+                print(f"[CAMERA] Found GREEN tile at ({c}, {r})! Total Green: {self.green_count}")
+            elif detected_color == "RED":
+                if c > 0 or r > 0:
+                    self.red_cell_coord = (c, r)
+                    print(f"[CAMERA] Memorized FINAL RED TILE at discrete ({c}, {r})! Continuing exploration...")
+
+    def find_nearest_unvisited_path(self, start_c, start_r):
+        """
+        Finds the shortest path over confirmed 'open' edges from (start_c, start_r)
+        to the nearest unvisited cell.
+        Returns a list of cell coordinates: [(c1, r1), (c2, r2), ...] or None if all reachable cells visited.
+        """
+        queue = collections.deque([(start_c, start_r, [])])
+        visited_nodes = set([(start_c, start_r)])
+        
+        while queue:
+            c, r, path = queue.popleft()
+            cell = self.grid.get((c, r))
+            if not cell:
+                continue
+                
+            for d in ["N", "S", "W", "E"]:
+                if cell.edges.get(d) == "open":
+                    dx, dy = DIR_OFFSET[d]
+                    nc, nr = c + dx, r + dy
+                    if (nc, nr) in self.grid and (nc, nr) not in visited_nodes:
+                        visited_nodes.add((nc, nr))
+                        nbr = self.grid[(nc, nr)]
+                        step_path = path + [(nc, nr)]
+                        if not nbr.visited:
+                            return step_path
+                        else:
+                            queue.append((nc, nr, step_path))
+        return None
+
+    def find_path_to(self, start_c, start_r, target_c, target_r):
+        """
+        Finds shortest path over confirmed 'open' edges from start to target.
+        Returns list of cell coordinates: [(c1, r1), (c2, r2), ...] or None if unreachable.
+        """
+        if (start_c, start_r) == (target_c, target_r):
+            return []
+            
+        queue = collections.deque([(start_c, start_r, [])])
+        visited_nodes = set([(start_c, start_r)])
+        
+        while queue:
+            c, r, path = queue.popleft()
+            if (c, r) == (target_c, target_r):
+                return path
+                
+            cell = self.grid.get((c, r))
+            if not cell:
+                continue
+                
+            for d in ["N", "S", "W", "E"]:
+                if cell.edges.get(d) == "open":
+                    dx, dy = DIR_OFFSET[d]
+                    nc, nr = c + dx, r + dy
+                    if (nc, nr) in self.grid and (nc, nr) not in visited_nodes:
+                        visited_nodes.add((nc, nr))
+                        step_path = path + [(nc, nr)]
+                        if (nc, nr) == (target_c, target_r):
+                            return step_path
+                        queue.append((nc, nr, step_path))
+        return None
+
 def main():
     global GOAL
     robot = Robot()
@@ -452,10 +609,7 @@ def main():
                 bot.state = "TRANSITION"
                 
         elif bot.state == "TRANSITION":
-            print("--- ENTERING SECTION 2 MAZE & STARTING DFS ---")
             bot.camera.enable(TIME_STEP)
-            
-            # Maze Column 0 is at X = 0.22m, Row 0 is at Y = 1.455m
             bot.maze_start_x = 0.22
             bot.maze_start_y = 1.455
             
@@ -467,238 +621,210 @@ def main():
                 bot.drive_wheels(0, 0)
                 bot.x = 0.22
                 bot.y = 1.455
-                bot.th = math.pi / 2 # Facing North
+                bot.th = math.pi / 2  # Facing North
                 
-                # DFS grid dictionary: (cx, cy) -> {'visited': True, 'walls': {'N':True, 'S':False, ...}}
-                bot.dfs_grid = {(0,0): {'visited': True, 'scanned': False, 'walls': {}}}
-                bot.dfs_stack = [] # Empty initially! Current position is (cx, cy)
-                
-                bot.cx = 0
-                bot.cy = 0
-                bot.target_cx = None
-                bot.target_cy = None
+                print("--- ENTERING SECTION 2 MAZE & STARTING FRONTIER EXPLORATION ---")
+                bot.maze = MazeMap()
+                bot.col = 0
+                bot.row = 0
+                bot.target_col = None
+                bot.target_row = None
+                bot.active_path = []
                 bot.is_finishing = False
                 
-                bot.state = "DFS_SCAN"
-            
-        elif bot.state == "DFS_SCAN":
-            # 0. Physical Odometry Correction
-            # Snap to perfect grid mathematically
-            true_cx = bot.maze_start_x + bot.cx * 0.25
-            true_cy = bot.maze_start_y + bot.cy * 0.25
+                bot.state = "S2_INSPECT"
+
+        elif bot.state == "S2_INSPECT":
+            # 0. Physical Odometry Correction: snap to true grid coordinates
+            true_cx = bot.maze_start_x + bot.col * 0.25
+            true_cy = bot.maze_start_y + bot.row * 0.25
             bot.x = true_cx
             bot.y = true_cy
             
-            # If there is a wall in front, use it to physically perfect the longitudinal axis!
+            # Longitudinal correction against front wall if close
             if bot.d[0] < 0.20:
                 dist_to_wall = bot.d[0] + 0.042
                 if abs(wrap(bot.th - 0.0)) < 0.5: bot.x = (true_cx + 0.125) - dist_to_wall
                 elif abs(wrap(bot.th - math.pi/2)) < 0.5: bot.y = (true_cy + 0.125) - dist_to_wall
                 elif abs(wrap(bot.th - math.pi)) < 0.5: bot.x = (true_cx - 0.125) + dist_to_wall
                 elif abs(wrap(bot.th + math.pi/2)) < 0.5: bot.y = (true_cy - 0.125) + dist_to_wall
-                
-            # 1. Check Camera for Color Tiles
+
+            # 1. Camera Color Tile Detection
+            detected_color = None
             img = bot.camera.getImageArray()
             if img:
                 w, h = bot.camera.getWidth(), bot.camera.getHeight()
                 r, g, b = img[w // 2][h // 2]
-                detected_color = None
                 if b > 40 and b > r * 1.5 and b > g * 1.5: detected_color = "BLUE"
                 elif g > 40 and g > r * 1.5 and g > b * 1.5: detected_color = "GREEN"
                 elif r > 40 and r > g * 1.5 and r > b * 1.5: detected_color = "RED"
-                
+            
             if detected_color:
-                cell_coord = (bot.cx, bot.cy)
-                if cell_coord not in bot.tile_memory:
-                    bot.tile_memory.append(cell_coord)
-                    if detected_color == "BLUE":
-                        bot.blue_count += 1
-                        print(f"[CAMERA] Found BLUE tile at ({bot.cx}, {bot.cy})! Total Blue: {bot.blue_count}")
-                    elif detected_color == "GREEN":
-                        bot.green_count += 1
-                        print(f"[CAMERA] Found GREEN tile at ({bot.cx}, {bot.cy})! Total Green: {bot.green_count}")
-                    elif detected_color == "RED":
-                        if bot.cx > 0 or bot.cy > 0:
-                            bot.final_end_cell = (bot.cx, bot.cy)
-                            print(f"[CAMERA] Memorized FINAL RED TILE at discrete {bot.final_end_cell}!")
-                            
-            # 2. Map Walls (ONLY if entering an unmapped cell for the first time!)
-            cell = bot.dfs_grid.setdefault((bot.cx, bot.cy), {'visited': True, 'scanned': False, 'walls': {}})
-            cell['visited'] = True
-            
-            dir_to_offset = {"N": (0,1), "S": (0,-1), "E": (1,0), "W": (-1,0)}
-            opp = {"N": "S", "S": "N", "E": "W", "W": "E"}
-            
-            if not cell.get('scanned', False):
-                def angle_to_dir(a):
-                    a = wrap(a)
-                    if abs(a) < 0.78: return "E"
-                    if abs(wrap(a - math.pi/2)) < 0.78: return "N"
-                    if abs(wrap(a - math.pi)) < 0.78: return "W"
-                    if abs(wrap(a + math.pi/2)) < 0.78: return "S"
-                    return "E"
-                
+                bot.maze.record_color(bot.col, bot.row, detected_color)
+
+            # 2. Map Walls using distance sensors (first time inspecting this cell)
+            cell = bot.maze.grid[(bot.col, bot.row)]
+            if not cell.scanned:
                 f_dir = angle_to_dir(bot.th)
-                l_dir = angle_to_dir(bot.th + math.pi/2)
-                r_dir = angle_to_dir(bot.th - math.pi/2)
+                l_dir = angle_to_dir(bot.th + math.pi / 2)
+                r_dir = angle_to_dir(bot.th - math.pi / 2)
                 b_dir = angle_to_dir(bot.th + math.pi)
                 
-                # Check sensor readings: A true perpendicular wall reads ~0.075m - 0.083m.
-                # Threshold of 0.15m cleanly distinguishes walls (<0.15m) from open corridors (>0.30m).
-                cell['walls'][f_dir] = bot.d[0] < 0.15
-                cell['walls'][l_dir] = bot.d[2] < 0.15
-                cell['walls'][r_dir] = bot.d[6] < 0.15
-                cell['walls'][b_dir] = False # The cell we drove from is open
+                bot.maze.set_edge(bot.col, bot.row, f_dir, "wall" if bot.d[0] < 0.16 else "open")
+                bot.maze.set_edge(bot.col, bot.row, l_dir, "wall" if bot.d[2] < 0.16 else "open")
+                bot.maze.set_edge(bot.col, bot.row, r_dir, "wall" if bot.d[6] < 0.16 else "open")
+                bot.maze.set_edge(bot.col, bot.row, b_dir, "wall" if bot.d[4] < 0.16 else "open")
                 
-                # Physical Arena / Maze Grid Boundary Limits:
-                # Columns: cx in [0, 8], Rows: cy in [0, 3]
-                for d_str, (dx, dy) in dir_to_offset.items():
-                    nx, ny = bot.cx + dx, bot.cy + dy
-                    if not (0 <= nx <= 8 and 0 <= ny <= 3):
-                        cell['walls'][d_str] = True  # Hard outer maze boundary wall!
-                
-                # Transition door at (0, 0): Never allow robot to turn South back into Section 1!
-                if bot.cx == 0 and bot.cy == 0:
-                    cell['walls']["S"] = True
-                
-                # Bidirectional consistency with neighbors
-                for d_str, is_wall in cell['walls'].items():
-                    if not is_wall:
-                        dx, dy = dir_to_offset[d_str]
-                        nx, ny = bot.cx + dx, bot.cy + dy
-                        if 0 <= nx <= 8 and 0 <= ny <= 3:
-                            nbr = bot.dfs_grid.setdefault((nx, ny), {'visited': False, 'scanned': False, 'walls': {}})
-                            nbr['walls'][opp[d_str]] = False
-                
-                cell['scanned'] = True
+                cell.scanned = True
+            cell.visited = True
             
-            # 3. Pick Next Cell
-            # Priority Order: North ("N"), South ("S"), West ("W"), East ("E")
-            unvisited = []
-            for d_str in ["N", "S", "W", "E"]:
-                if not cell['walls'].get(d_str, True):
-                    dx, dy = dir_to_offset[d_str]
-                    nx, ny = bot.cx + dx, bot.cy + dy
-                    if 0 <= nx <= 8 and 0 <= ny <= 3:
-                        nbr = bot.dfs_grid.get((nx, ny))
-                        if not nbr or not nbr.get('visited', False):
-                            unvisited.append(((nx, ny), d_str))
-                        
-            unvisited_cells = [u[0] for u in unvisited]
-            if unvisited:
-                # Explore forward
-                next_cell, direction = unvisited[0]
-                bot.dfs_stack.append((bot.cx, bot.cy))
-                bot.target_cx, bot.target_cy = next_cell
-                bot.dfs_grid.setdefault(next_cell, {'visited': True, 'scanned': False, 'walls': {}})['visited'] = True
-                print(f"[NAV] Current: ({bot.cx}, {bot.cy}) | Unvisited: {unvisited_cells} | Next: {next_cell} ({direction})")
-                bot.state = "DFS_TURN"
+            # 3. Print coordinate and pause for 1 second
+            print(f"Current cell: ({bot.col}, {bot.row})")
+            bot.drive_wheels(0, 0)
+            bot.pause_timer = int(round(1.0 / (TIME_STEP / 1000.0)))
+            bot.state = "S2_PAUSE"
+
+        elif bot.state == "S2_PAUSE":
+            bot.drive_wheels(0, 0)
+            bot.pause_timer -= 1
+            if bot.pause_timer <= 0:
+                bot.state = "S2_PLAN"
+
+        elif bot.state == "S2_PLAN":
+            # If we are in finish mode and finished the path back to the Red tile:
+            if bot.is_finishing and not bot.active_path:
+                bot.state = "S2_FINISH_ALIGN"
+            
+            # If we are currently following a multi-step path (backtracking or return to Red):
+            elif bot.active_path:
+                next_cell = bot.active_path.pop(0)
+                dx = next_cell[0] - bot.col
+                dy = next_cell[1] - bot.row
+                d_str = {(0,1): "N", (0,-1): "S", (1,0): "E", (-1,0): "W"}.get((dx, dy), "")
+                bot.target_col, bot.target_row = next_cell
+                print(f"Next cell to go: {next_cell} ({d_str})")
+                bot.state = "S2_TURN"
+                
             else:
-                # Backtrack
-                if not bot.dfs_stack:
-                    print("DFS COMPLETE!")
-                    bot.state = "FINISH"
+                # Find path to nearest unvisited cell via BFS
+                frontier_path = bot.maze.find_nearest_unvisited_path(bot.col, bot.row)
+                if frontier_path:
+                    bot.active_path = frontier_path
+                    next_cell = bot.active_path.pop(0)
+                    dx = next_cell[0] - bot.col
+                    dy = next_cell[1] - bot.row
+                    d_str = {(0,1): "N", (0,-1): "S", (1,0): "E", (-1,0): "W"}.get((dx, dy), "")
+                    bot.target_col, bot.target_row = next_cell
+                    print(f"Next cell to go: {next_cell} ({d_str})")
+                    bot.state = "S2_TURN"
                 else:
-                    bot.target_cx, bot.target_cy = bot.dfs_stack.pop()
-                    print(f"[NAV] Current: ({bot.cx}, {bot.cy}) | Unvisited: [] | Backtrack to: {(bot.target_cx, bot.target_cy)}")
-                    bot.state = "DFS_TURN"
-                    
-        elif bot.state == "DFS_TURN":
-            # Orient towards target
-            dx = bot.target_cx - bot.cx
-            dy = bot.target_cy - bot.cy
+                    # All reachable cells have been visited! 100% exploration complete!
+                    print("--- All Reachable Cells Explored! Routing to Final Red Tile ---")
+                    dest = bot.maze.red_cell_coord if bot.maze.red_cell_coord else (8, 3)
+                    if (bot.col, bot.row) == dest:
+                        bot.state = "S2_FINISH_ALIGN"
+                    else:
+                        route_to_red = bot.maze.find_path_to(bot.col, bot.row, dest[0], dest[1])
+                        if route_to_red:
+                            bot.active_path = route_to_red
+                            bot.is_finishing = True
+                            next_cell = bot.active_path.pop(0)
+                            dx = next_cell[0] - bot.col
+                            dy = next_cell[1] - bot.row
+                            d_str = {(0,1): "N", (0,-1): "S", (1,0): "E", (-1,0): "W"}.get((dx, dy), "")
+                            bot.target_col, bot.target_row = next_cell
+                            print(f"Next cell to go: {next_cell} ({d_str})")
+                            bot.state = "S2_TURN"
+                        else:
+                            print(f"[ERROR] Cannot find path to red cell {dest}!")
+                            bot.state = "S2_FINISH_ALIGN"
+
+        elif bot.state == "S2_TURN":
+            dx = bot.target_col - bot.col
+            dy = bot.target_row - bot.row
             target_angle = math.atan2(dy, dx)
             e = wrap(target_angle - bot.th)
             
-            if abs(e) > 0.05:
-                speed = MAX_WHEEL * 0.4  # SAFER TURN
+            if abs(e) > 0.04:
+                speed = MAX_WHEEL * 0.35  # Controlled turn
                 bot.drive_wheels(-speed if e > 0 else speed, speed if e > 0 else -speed)
             else:
                 bot.drive_wheels(0, 0)
-                bot.state = "DFS_FORWARD"
-                
-        elif bot.state == "DFS_FORWARD":
-            dx = bot.target_cx - bot.cx
-            dy = bot.target_cy - bot.cy
+                bot.state = "S2_MOVE"
+
+        elif bot.state == "S2_MOVE":
+            dx = bot.target_col - bot.col
+            dy = bot.target_row - bot.row
             target_angle = math.atan2(dy, dx)
 
-            target_x = bot.maze_start_x + bot.target_cx * 0.25
-            target_y = bot.maze_start_y + bot.target_cy * 0.25
+            target_x = bot.maze_start_x + bot.target_col * 0.25
+            target_y = bot.maze_start_y + bot.target_row * 0.25
             
-            # Progress along movement direction (immune to cross-track lateral drift)
             remaining = (target_x - bot.x) * dx + (target_y - bot.y) * dy
             
-            # Emergency Frontal Crash Stop (Odometry Drift Protection)
-            reached = (remaining <= 0.02) or (bot.d[0] < 0.06)
+            # 1. Arrival at target cell center
+            if remaining <= 0.02:
+                bot.drive_wheels(0, 0)
+                bot.x = target_x
+                bot.y = target_y
+                bot.col = bot.target_col
+                bot.row = bot.target_row
+                bot.state = "S2_INSPECT"
                 
-            if not reached:
+            # 2. Blocked by unexpected wall (only if far from arrival, > 0.08m)
+            elif remaining > 0.08 and bot.d[0] < 0.05:
+                bot.drive_wheels(0, 0)
+                blocked_dir = {(0,1): "N", (0,-1): "S", (1,0): "E", (-1,0): "W"}.get((dx, dy), "N")
+                print(f"[NAV] Blocked by unexpected wall heading {blocked_dir}! Re-planning at ({bot.col}, {bot.row})")
+                bot.maze.set_edge(bot.col, bot.row, blocked_dir, "wall")
+                bot.x = bot.maze_start_x + bot.col * 0.25
+                bot.y = bot.maze_start_y + bot.row * 0.25
+                bot.active_path = [] # Clear stale path
+                bot.state = "S2_INSPECT"
+                
+            else:
                 speed = MAX_WHEEL * 0.6  # Controlled forward drive
                 
-                # 1. Primary Heading Lock using IMU (guarantees robot stays on straight cardinal line)
+                # Heading lock using IMU
                 heading_err = wrap(target_angle - bot.th)
-                turn = heading_err * 3.0  # Proportional heading correction
+                turn = heading_err * 3.0
                 
-                # 2. Secondary Corridor Centering: ONLY active when bounded by BOTH parallel walls
-                # This prevents the robot from ever falsely veering towards side openings or intersections
+                # Dual parallel wall centering
                 left_wall = bot.d[2] < 0.16
                 right_wall = bot.d[6] < 0.16
                 if left_wall and right_wall:
                     wall_err = bot.d[2] - bot.d[6]
-                    turn += wall_err * 1.5  # Gentle centering nudge
+                    turn += wall_err * 1.5
                     
-                # Clamp turn to prevent sudden jerking
                 turn = max(min(turn, 2.5), -2.5)
                 bot.drive_wheels(speed - turn, speed + turn)
+
+        elif bot.state == "S2_FINISH_ALIGN":
+            bot.drive_wheels(0, 0)
+            dest = bot.maze.red_cell_coord if bot.maze.red_cell_coord else (8, 3)
+            # Snap to Red cell center
+            bot.x = bot.maze_start_x + dest[0] * 0.25
+            bot.y = bot.maze_start_y + dest[1] * 0.25
+            bot.col, bot.row = dest
+            
+            print("=== MAZE COMPLETED! ===")
+            print(f"Final Count -> Blue: {bot.maze.blue_count}, Green: {bot.maze.green_count}")
+            if bot.maze.blue_count > bot.maze.green_count:
+                bot.led_blue.set(1)
+                print("Majority Color: BLUE. Activated led_blue.")
+            elif bot.maze.green_count > bot.maze.blue_count:
+                bot.led_green.set(1)
+                print("Majority Color: GREEN. Activated led_green.")
             else:
-                bot.drive_wheels(0, 0)
-                bot.x = target_x
-                bot.y = target_y
-                bot.cx, bot.cy = bot.target_cx, bot.target_cy
-                bot.state = "FINISH_NAV" if bot.is_finishing else "DFS_SCAN"
-                
-        elif bot.state == "FINISH":
-            if not bot.final_end_cell:
-                print("[ERROR] Explored whole maze but never found the final Red tile!")
-                bot.drive_wheels(0, 0)
-                break
-                
-            # BFS to find shortest path to final_end_cell
-            queue = collections.deque([((bot.cx, bot.cy), [])])
-            visited = set()
-            bot.discrete_path = []
-            while queue:
-                curr, path = queue.popleft()
-                if curr == bot.final_end_cell:
-                    bot.discrete_path = path
-                    break
-                if curr in visited: continue
-                visited.add(curr)
-                
-                cell_walls = bot.dfs_grid.get(curr, {}).get('walls', {})
-                for d_str, (dx, dy) in {"N":(0,1), "S":(0,-1), "E":(1,0), "W":(-1,0)}.items():
-                    if not cell_walls.get(d_str, True):
-                        queue.append(((curr[0]+dx, curr[1]+dy), path + [(curr[0]+dx, curr[1]+dy)]))
+                bot.led_blue.set(1)
+                bot.led_green.set(1)
+                print("Color Tie! Activated both LEDs.")
             
-            if not bot.discrete_path:
-                print("[ERROR] Cannot find path to end cell!")
+            # Keep stepping briefly to allow Webots to render LED activation, then stop
+            for _ in range(30):
+                bot.step()
                 bot.drive_wheels(0, 0)
-                break
-                
-            bot.is_finishing = True
-            bot.state = "FINISH_NAV"
-            
-        elif bot.state == "FINISH_NAV":
-            if not bot.discrete_path:
-                bot.drive_wheels(0, 0)
-                print("=== MAZE COMPLETED! ===")
-                print(f"Final Count -> Blue: {bot.blue_count}, Green: {bot.green_count}")
-                if bot.blue_count > bot.green_count: bot.led_blue.set(1)
-                elif bot.green_count > bot.blue_count: bot.led_green.set(1)
-                else: bot.led_blue.set(1); bot.led_green.set(1)
-                break
-                
-            bot.target_cx, bot.target_cy = bot.discrete_path.pop(0)
-            bot.state = "DFS_TURN"
+            break
 
 if __name__ == "__main__":
     main()
