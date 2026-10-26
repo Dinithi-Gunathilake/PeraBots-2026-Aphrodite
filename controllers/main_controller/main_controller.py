@@ -719,11 +719,14 @@ def main():
                     bot.state = "S2_TURN"
                 else:
                     # All reachable cells have been visited! 100% exploration complete!
-                    print("--- All Reachable Cells Explored! Routing to Final Red Tile ---")
-                    dest = bot.maze.red_cell_coord if bot.maze.red_cell_coord else (8, 3)
-                    if (bot.col, bot.row) == dest:
+                    dest = bot.maze.red_cell_coord
+                    if not dest:
+                        print("[ERROR] Exploration complete but no Red tile was detected!")
+                        bot.state = "S2_FINISH_ALIGN"
+                    elif (bot.col, bot.row) == dest:
                         bot.state = "S2_FINISH_ALIGN"
                     else:
+                        print(f"--- All Reachable Cells Explored! Routing to Memorized Red Tile at {dest} ---")
                         route_to_red = bot.maze.find_path_to(bot.col, bot.row, dest[0], dest[1])
                         if route_to_red:
                             bot.active_path = route_to_red
@@ -801,11 +804,12 @@ def main():
 
         elif bot.state == "S2_FINISH_ALIGN":
             bot.drive_wheels(0, 0)
-            dest = bot.maze.red_cell_coord if bot.maze.red_cell_coord else (8, 3)
-            # Snap to Red cell center
-            bot.x = bot.maze_start_x + dest[0] * 0.25
-            bot.y = bot.maze_start_y + dest[1] * 0.25
-            bot.col, bot.row = dest
+            dest = bot.maze.red_cell_coord
+            if dest:
+                # Snap to Red cell center
+                bot.x = bot.maze_start_x + dest[0] * 0.25
+                bot.y = bot.maze_start_y + dest[1] * 0.25
+                bot.col, bot.row = dest
             
             print("=== MAZE COMPLETED! ===")
             print(f"Final Count -> Blue: {bot.maze.blue_count}, Green: {bot.maze.green_count}")
