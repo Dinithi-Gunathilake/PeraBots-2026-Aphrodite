@@ -749,7 +749,7 @@ def main():
             e = wrap(target_angle - bot.th)
             
             if abs(e) > 0.04:
-                speed = MAX_WHEEL * 0.35  # Controlled turn
+                speed = MAX_WHEEL * 0.5  # Controlled turn
                 bot.drive_wheels(-speed if e > 0 else speed, speed if e > 0 else -speed)
             else:
                 bot.drive_wheels(0, 0)
@@ -786,7 +786,7 @@ def main():
                 bot.state = "S2_INSPECT"
                 
             else:
-                speed = MAX_WHEEL * 0.6  # Controlled forward drive
+                speed = MAX_WHEEL   # Controlled forward drive
                 
                 # Heading lock using IMU
                 heading_err = wrap(target_angle - bot.th)
