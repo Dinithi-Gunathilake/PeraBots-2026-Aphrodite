@@ -584,8 +584,13 @@ def main():
         bot.x, bot.y, _ = result
         print(f"Calibrated: X={bot.x:.3f}, Y={bot.y:.3f}")
     else:
-        print("Calibration failed!")
-        return
+        # Fallback for dedicated Section 2 evaluation attempt where robot is placed at Section 2 entrance
+        print("[INIT] Section 1 outer walls not detected; assuming placement at Section 2 entrance.")
+        print("[INIT] Starting directly in Section 2 Transition mode!")
+        bot.x = 0.22
+        bot.y = 1.29
+        bot.th = math.pi / 2
+        bot.state = "TRANSITION"
 
     # Clear map garbage collected during the spin when coordinates were 0,0
     bot.map = bytearray([127] * (NX * NY))
@@ -736,9 +741,10 @@ def main():
             target_angle = math.atan2(dy, dx)
             e = wrap(target_angle - bot.th)
             
-            if abs(e) > 0.04:
-                speed = MAX_WHEEL * 0.35  # Controlled turn
-                bot.drive_wheels(-speed if e > 0 else speed, speed if e > 0 else -speed)
+            if abs(e) > 0.03:
+                # Proportional soft turn: slows down smoothly near completion to prevent slip and caster drift
+                turn_speed = max(1.2, min(MAX_WHEEL * 0.35, abs(e) * 2.5))
+                bot.drive_wheels(-turn_speed if e > 0 else turn_speed, turn_speed if e > 0 else -turn_speed)
             else:
                 bot.drive_wheels(0, 0)
                 bot.state = "S2_MOVE"
@@ -753,8 +759,8 @@ def main():
             
             remaining = (target_x - bot.x) * dx + (target_y - bot.y) * dy
             
-            # 1. Arrival at target cell center
-            if remaining <= 0.02:
+            # 1. Arrival at exact target cell center
+            if remaining <= 0.005:
                 bot.drive_wheels(0, 0)
                 bot.x = target_x
                 bot.y = target_y
@@ -774,18 +780,37 @@ def main():
                 bot.state = "S2_INSPECT"
                 
             else:
-                speed = MAX_WHEEL * 0.6  # Controlled forward drive
+                # Smooth deceleration when approaching cell center for millimeter-precise arrival
+                if remaining < 0.05:
+                    speed = MAX_WHEEL * 0.25
+                else:
+                    speed = MAX_WHEEL * 0.55  # Controlled forward drive
                 
-                # Heading lock using IMU
+                # 1. Primary Heading Lock using IMU
                 heading_err = wrap(target_angle - bot.th)
                 turn = heading_err * 3.0
                 
-                # Dual parallel wall centering
+                # 2. Universal Active Wall Centering (Nominal centered distance to wall is ~0.083m)
                 left_wall = bot.d[2] < 0.16
                 right_wall = bot.d[6] < 0.16
                 if left_wall and right_wall:
+                    # Both walls present: balance evenly
                     wall_err = bot.d[2] - bot.d[6]
-                    turn += wall_err * 1.5
+                    turn += wall_err * 2.0
+                elif left_wall and not right_wall:
+                    # Only left wall: keep safe distance (0.083m nominal), steer right if too close
+                    if bot.d[2] < 0.085:
+                        turn += (bot.d[2] - 0.083) * 2.5
+                elif right_wall and not left_wall:
+                    # Only right wall: keep safe distance (0.083m nominal), steer left if too close
+                    if bot.d[6] < 0.085:
+                        turn += (0.083 - bot.d[6]) * 2.5
+                
+                # 3. Front-Diagonal Corner Repulsion (push away from protruding wall corners)
+                if bot.d[1] < 0.085:  # Front-left diagonal sees corner
+                    turn -= (0.085 - bot.d[1]) * 4.0
+                if bot.d[7] < 0.085:  # Front-right diagonal sees corner
+                    turn += (0.085 - bot.d[7]) * 4.0
                     
                 turn = max(min(turn, 2.5), -2.5)
                 bot.drive_wheels(speed - turn, speed + turn)
