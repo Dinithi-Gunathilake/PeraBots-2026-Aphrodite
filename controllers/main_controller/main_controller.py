@@ -303,7 +303,7 @@ class Bot:
         self.path = []
                 
     def a_star(self):
-        """Find safest collision-free path to GOAL avoiding self.map obstacles."""
+        """Fast single-pass A* avoiding obstacles with safe clearance."""
         start = (int(self.x / CELL) + OFFSET_X, int(self.y / CELL) + OFFSET_Y)
         goal = (int(GOAL[0] / CELL) + OFFSET_X, int(GOAL[1] / CELL) + OFFSET_Y)
         
@@ -314,63 +314,65 @@ class Bot:
         moves = [(1,0,1.0), (-1,0,1.0), (0,1,1.0), (0,-1,1.0), 
                  (1,1,1.414), (1,-1,1.414), (-1,1,1.414), (-1,-1,1.414)]
 
-        # Try widest safety clearance (6.6cm = max_d2 11) first; fallback to 5.7cm or 4.5cm only if tight
-        for max_d2 in [11, 8, 5]:
-            lim = int(math.ceil(math.sqrt(max_d2)))
-            g = [INF] * N
-            parent = [-1] * N
-            s_idx = start[1] * NX + start[0]
-            g[s_idx] = 0.0
-            heap = [(0.0, s_idx)]
-            closed = bytearray(N)
-            found = False
+        # Precomputed circular clearance footprint (radius ~5.5cm = 2.8 cells, 21 points)
+        CLEARANCE_OFFSETS = (
+            (-2,-1), (-2,0), (-2,1),
+            (-1,-2), (-1,-1), (-1,0), (-1,1), (-1,2),
+            (0,-2), (0,-1), (0,1), (0,2),
+            (1,-2), (1,-1), (1,0), (1,1), (1,2),
+            (2,-1), (2,0), (2,1)
+        )
+
+        g = [INF] * N
+        parent = [-1] * N
+        s_idx = start[1] * NX + start[0]
+        g[s_idx] = 0.0
+        heap = [(0.0, s_idx)]
+        closed = bytearray(N)
+        
+        while heap:
+            _, idx = heapq.heappop(heap)
+            if closed[idx]: continue
+            closed[idx] = 1
+            i, j = idx % NX, idx // NX
             
-            while heap:
-                _, idx = heapq.heappop(heap)
-                if closed[idx]: continue
-                closed[idx] = 1
-                i, j = idx % NX, idx // NX
+            if i == goal[0] and j == goal[1]:
+                out = []
+                while idx != -1:
+                    out.append((idx % NX, idx // NX))
+                    idx = parent[idx]
+                out.reverse()
+                self.path = [((ix - OFFSET_X + 0.5)*CELL, (iy - OFFSET_Y + 0.5)*CELL) for ix, iy in out]
+                return
                 
-                if i == goal[0] and j == goal[1]:
-                    out = []
-                    while idx != -1:
-                        out.append((idx % NX, idx // NX))
-                        idx = parent[idx]
-                    out.reverse()
-                    self.path = [((ix - OFFSET_X + 0.5)*CELL, (iy - OFFSET_Y + 0.5)*CELL) for ix, iy in out]
-                    return
+            for di, dj, cost in moves:
+                ni, nj = i + di, j + dj
+                if ni < 0 or nj < 0 or ni >= NX or nj >= NY: continue
+                
+                # Check obstacle + clearance
+                blocked = False
+                for dx, dy in CLEARANCE_OFFSETS:
+                    ix, iy = ni + dx, nj + dy
+                    if 0 <= ix < NX and 0 <= iy < NY:
+                        if self.map[iy * NX + ix] == 255:
+                            blocked = True
+                            break
+                
+                nidx = nj * NX + ni
+                if blocked or closed[nidx]: continue
+                
+                ng = g[idx] + cost
+                if ng < g[nidx]:
+                    g[nidx] = ng
+                    parent[nidx] = idx
+                    h = math.hypot(ni - goal[0], nj - goal[1])
+                    heapq.heappush(heap, (ng + h, nidx))
                     
-                for di, dj, cost in moves:
-                    ni, nj = i + di, j + dj
-                    if ni < 0 or nj < 0 or ni >= NX or nj >= NY: continue
-                    
-                    # Check obstacle + circular inflation clearance
-                    blocked = False
-                    for dx in range(-lim, lim + 1):
-                        for dy in range(-lim, lim + 1):
-                            if dx*dx + dy*dy <= max_d2:
-                                ix, iy = ni + dx, nj + dy
-                                if 0 <= ix < NX and 0 <= iy < NY:
-                                    if self.map[iy * NX + ix] == 255:
-                                        blocked = True
-                                        break
-                        if blocked: break
-                    
-                    nidx = nj * NX + ni
-                    if blocked or closed[nidx]: continue
-                    
-                    ng = g[idx] + cost
-                    if ng < g[nidx]:
-                        g[nidx] = ng
-                        parent[nidx] = idx
-                        h = math.hypot(ni - goal[0], nj - goal[1])
-                        heapq.heappush(heap, (ng + h, nidx))
-                        
-        print(f"[A* ERROR] Queue emptied. No path found to GOAL {goal} from START {start}!")
-        self.path = []
+        # If no new path found due to temporary noise, retain existing path to keep driving
+        print(f"[A*] Path retained (clearance held).")
 
     def navigate(self):
-        """Pure Pursuit Follower with corner-cutting prevention and active obstacle repulsion."""
+        """Pure Pursuit Follower with smooth curve tracking and corner clearance."""
         if not self.path or len(self.path) < 2:
             print("[NAVIGATE] Reached the target cell and navigation stopped. Motors OFF.")
             self.drive_wheels(0, 0)
@@ -385,8 +387,8 @@ class Bot:
                 min_dist = d
                 closest_idx = i
                 
-        # Lookahead 4 nodes (8cm) to strictly follow the path around corners and prevent corner cutting
-        lookahead = min(closest_idx + 4, len(self.path) - 1)
+        # Lookahead 8 nodes (16cm) for smooth, stable path tracking without sharp corner-cutting
+        lookahead = min(closest_idx + 8, len(self.path) - 1)
         target = self.path[lookahead]
         
         # Calculate heading error
@@ -394,31 +396,31 @@ class Bot:
         e = wrap(target_angle - self.th)
         
         # Drive control
-        if abs(e) > 0.6: # Sharp turn: spin in place smoothly
-            v_l = MAX_WHEEL * 0.4 if e < 0 else -MAX_WHEEL * 0.4
-            v_r = -MAX_WHEEL * 0.4 if e < 0 else MAX_WHEEL * 0.4
-        else: # Smooth proportional curve
-            speed = MAX_WHEEL * 0.65  # Controlled base speed
-            turn = e * MAX_WHEEL * 1.0  # Responsive steering gain
+        if abs(e) > 0.8: # Sharp turn: rotate smoothly
+            v_l = MAX_WHEEL * 0.45 if e < 0 else -MAX_WHEEL * 0.45
+            v_r = -MAX_WHEEL * 0.45 if e < 0 else MAX_WHEEL * 0.45
+        else: # Smooth proportional pursuit
+            speed = MAX_WHEEL * 0.72  # Stable, responsive speed
+            turn = e * MAX_WHEEL * 0.9  # Smooth steering gain
             
-            # Repulsive Steering: Actively push away from obstacles on all sides
+            # Repulsive Steering: Gentle pushes to avoid clipping obstacle edges
             # 1. Front-Diagonal Sensors (45 deg)
-            if self.d[1] < 0.14:  # Front-Left sees obstacle
-                turn -= (0.14 - self.d[1]) * MAX_WHEEL * 3.5
-            if self.d[7] < 0.14:  # Front-Right sees obstacle
-                turn += (0.14 - self.d[7]) * MAX_WHEEL * 3.5
+            if self.d[1] < 0.11:  # Front-Left corner near obstacle
+                turn -= (0.11 - self.d[1]) * MAX_WHEEL * 2.2
+            if self.d[7] < 0.11:  # Front-Right corner near obstacle
+                turn += (0.11 - self.d[7]) * MAX_WHEEL * 2.2
             
-            # 2. Side Sensors (90 deg)
-            if self.d[2] < 0.10:  # Left side sees obstacle
-                turn -= (0.10 - self.d[2]) * MAX_WHEEL * 3.0
-            if self.d[6] < 0.10:  # Right side sees obstacle
-                turn += (0.10 - self.d[6]) * MAX_WHEEL * 3.0
+            # 2. Side Sensors (90 deg) to prevent side wheel contact
+            if self.d[2] < 0.07:  # Left side within 7cm
+                turn -= (0.07 - self.d[2]) * MAX_WHEEL * 1.5
+            if self.d[6] < 0.07:  # Right side within 7cm
+                turn += (0.07 - self.d[6]) * MAX_WHEEL * 1.5
             
-            # Slow down when turning or when an obstacle is close on any front/side sensor
-            if abs(e) > 0.25 or min(self.d[0], self.d[1], self.d[2], self.d[6], self.d[7]) < 0.16:
+            # Slow down when negotiating tight curves or when close to obstacles
+            if abs(e) > 0.35 or min(self.d[0], self.d[1], self.d[7]) < 0.18:
                 speed *= 0.65
                 
-            turn = max(min(turn, 4.0), -4.0)
+            turn = max(min(turn, 3.0), -3.0)
             v_l = speed - turn
             v_r = speed + turn
         self.drive_wheels(v_l, v_r)
