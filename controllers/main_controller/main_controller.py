@@ -574,8 +574,11 @@ def main():
     if not bot.step(): return
     
     # Standalone Section 2 Check:
-    # If placed in narrow entrance corridor (Left and Right walls close: 25cm channel)
-    is_sec2_start = (bot.d[2] < 0.15 and bot.d[6] < 0.15 and (bot.d[2] + bot.d[6]) < 0.25)
+    # 1. Inside 25cm channel (chamber or cell 0,0): Left and Right walls close (d[2] < 0.15 and d[6] < 0.15)
+    # 2. At doorway threshold facing North: Front-Left and Front-Right doorway walls close (d[1] < 0.15 and d[7] < 0.15)
+    is_sec2_corridor = (bot.d[2] < 0.15 and bot.d[6] < 0.15 and (bot.d[2] + bot.d[6]) < 0.25)
+    is_sec2_doorway = (bot.d[1] < 0.15 and bot.d[7] < 0.15 and bot.d[0] > 0.15 and abs(wrap(bot.th - math.pi/2)) < 0.5)
+    is_sec2_start = is_sec2_corridor or is_sec2_doorway
     
     if is_sec2_start:
         print("=== STANDALONE SECTION 2 EVALUATION DETECTED ===")
@@ -587,10 +590,10 @@ def main():
         cardinals = [0.0, math.pi / 2, math.pi, -math.pi / 2]
         bot.th = min(cardinals, key=lambda a: abs(wrap(bot.th - a)))
         
-        # If back sensor is open (d[4] > 0.30), robot is in Transition Chamber facing North
+        # If back sensor is open (d[4] > 0.30) or at doorway, robot advances into Cell (0, 0)
         # If back sensor sees close wall (d[4] < 0.20), robot is already inside Maze Cell (0, 0)
-        if bot.d[4] > 0.30:
-            print("[INIT] Placed in Transition Chamber. Advancing into Maze Cell (0, 0)...")
+        if is_sec2_doorway or bot.d[4] > 0.30:
+            print("[INIT] Placed at Entrance / Transition Chamber. Advancing into Maze Cell (0, 0)...")
             bot.x = 0.22
             bot.y = 1.275
             bot.state = "TRANSITION"
@@ -633,7 +636,8 @@ def main():
             bot.y = 1.275
             bot.th = math.pi / 2
             bot.state = "TRANSITION"
-    
+            
+    plan_counter = 0
     while bot.step():
         if bot.state == "SECTION_1":
             plan_counter += 1
