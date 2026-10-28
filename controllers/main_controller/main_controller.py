@@ -79,6 +79,8 @@ def localise_from_scan(samples):
     else: phi_x, Dx, Dy = a2, D2, D1
     return 2.44 - 0.006 - Dx, 0.006 + Dy, phi_x
 
+INFLATION_OFFSETS = tuple((dx, dy) for dx in range(-4, 5) for dy in range(-4, 5) if dx*dx + dy*dy <= 16)
+
 class Bot:
     def __init__(self, robot):
         self.robot = robot
@@ -107,7 +109,11 @@ class Bot:
         
         # SLAM Maps
         self.map = bytearray([127] * (NX * NY)) # 127=Unknown, 0=Free, 255=Obstacle
+        self.inflated_map = bytearray(NX * NY)
         self.path = []
+        self.stuck_counter = 0
+        self.prev_x = 0.0
+        self.prev_y = 0.0
         
         # State Machine & Hardware
         self.state = "SECTION_1"
@@ -247,6 +253,10 @@ class Bot:
                 iy = int(py / CELL) + OFFSET_Y
                 if 0 <= ix < NX and 0 <= iy < NY:
                     self.map[iy * NX + ix] = 255
+                    for dx, dy in INFLATION_OFFSETS:
+                        ox, oy = ix + dx, iy + dy
+                        if 0 <= ox < NX and 0 <= oy < NY:
+                            self.inflated_map[oy * NX + ox] = 255
 
     def plan_to_frontier(self):
         """BFS to find the closest reachable frontier cell."""
@@ -283,20 +293,7 @@ class Bot:
                     if not visited[nidx]:
                         visited[nidx] = 1
                         if self.map[nidx] == 0: # Only route through known Free space
-                            
-                            # Apply Obstacle Inflation check!
-                            blocked = False
-                            for idx in [-2, -1, 0, 1, 2]:
-                                for idy in [-2, -1, 0, 1, 2]:
-                                    if idx*idx + idy*idy <= 5: # 4cm circular clearance
-                                        ix, iy = nx+idx, ny+idy
-                                        if 0 <= ix < NX and 0 <= iy < NY:
-                                            if self.map[iy * NX + ix] == 255:
-                                                blocked = True
-                                                break
-                                if blocked: break
-                                
-                            if not blocked:
+                            if self.inflated_map[nidx] != 255:
                                 queue.append(((nx, ny), path + [(nx, ny)]))
                                 
         print("[EXPLORE] MAZE FULLY MAPPED! No frontiers left.")
@@ -311,63 +308,58 @@ class Bot:
         if not (0 <= start[0] < NX and 0 <= start[1] < NY): return
         
         N = NX * NY
-        g = [INF] * N
-        parent = [-1] * N
-        s_idx = start[1] * NX + start[0]
-        g[s_idx] = 0.0
-        heap = [(0.0, s_idx)]
-        closed = bytearray(N)
-        
         moves = [(1,0,1.0), (-1,0,1.0), (0,1,1.0), (0,-1,1.0), 
                  (1,1,1.414), (1,-1,1.414), (-1,1,1.414), (-1,-1,1.414)]
                  
-        while heap:
-            _, idx = heapq.heappop(heap)
-            if closed[idx]: continue
-            closed[idx] = 1
-            i, j = idx % NX, idx // NX
+        for check_grid in (self.inflated_map, self.map):
+            g = [INF] * N
+            parent = [-1] * N
+            s_idx = start[1] * NX + start[0]
+            g[s_idx] = 0.0
+            heap = [(0.0, s_idx)]
+            closed = bytearray(N)
             
-            if i == goal[0] and j == goal[1]:
-                out = []
-                while idx != -1:
-                    out.append((idx % NX, idx // NX))
-                    idx = parent[idx]
-                out.reverse()
-                self.path = [((ix - OFFSET_X + 0.5)*CELL, (iy - OFFSET_Y + 0.5)*CELL) for ix, iy in out]
-                return
+            while heap:
+                _, idx = heapq.heappop(heap)
+                if closed[idx]: continue
+                closed[idx] = 1
+                i, j = idx % NX, idx // NX
                 
-            for di, dj, cost in moves:
-                ni, nj = i + di, j + dj
-                if ni < 0 or nj < 0 or ni >= NX or nj >= NY: continue
-                
-                # Check obstacle + circular inflation (radius = 2 cells = 4cm clearance)
-                blocked = False
-                for dx in [-2, -1, 0, 1, 2]:
-                    for dy in [-2, -1, 0, 1, 2]:
-                        if dx*dx + dy*dy <= 5: # Circular footprint radius ~2.2
-                            if 0 <= ni+dx < NX and 0 <= nj+dy < NY:
-                                if self.map[(nj+dy) * NX + (ni+dx)] == 255:
-                                    blocked = True
-                
-                nidx = nj * NX + ni
-                if blocked or closed[nidx]: continue
-                
-                ng = g[idx] + cost
-                if ng < g[nidx]:
-                    g[nidx] = ng
-                    parent[nidx] = idx
-                    # Heuristic
-                    h = math.hypot(ni - goal[0], nj - goal[1])
-                    heapq.heappush(heap, (ng + h, nidx))
+                if i == goal[0] and j == goal[1]:
+                    out = []
+                    while idx != -1:
+                        out.append((idx % NX, idx // NX))
+                        idx = parent[idx]
+                    out.reverse()
+                    self.path = [((ix - OFFSET_X + 0.5)*CELL, (iy - OFFSET_Y + 0.5)*CELL) for ix, iy in out]
+                    return
                     
+                for di, dj, cost in moves:
+                    ni, nj = i + di, j + dj
+                    if ni < 0 or nj < 0 or ni >= NX or nj >= NY: continue
+                    nidx = nj * NX + ni
+                    if check_grid[nidx] == 255 or closed[nidx]: continue
+                    
+                    ng = g[idx] + cost
+                    if ng < g[nidx]:
+                        g[nidx] = ng
+                        parent[nidx] = idx
+                        h = math.hypot(ni - goal[0], nj - goal[1])
+                        heapq.heappush(heap, (ng + h, nidx))
+                        
         print(f"[A* ERROR] Queue emptied. No path found to GOAL {goal} from START {start}!")
         self.path = []
 
     def navigate(self):
-        """Pure Pursuit Follower to drive along self.path."""
+        """Pure Pursuit Follower to drive along self.path with collision avoidance."""
         if not self.path or len(self.path) < 2:
             print("[NAVIGATE] Reached the target cell and navigation stopped. Motors OFF.")
             self.drive_wheels(0, 0)
+            return
+
+        # Emergency obstacle proximity: back up slightly if directly against an obstacle
+        if min(self.d[0], self.d[1], self.d[7]) < 0.045:
+            self.drive_wheels(-MAX_WHEEL * 0.4, -MAX_WHEEL * 0.4)
             return
             
         # Find closest point on path to current robot position
@@ -379,8 +371,8 @@ class Bot:
                 min_dist = d
                 closest_idx = i
                 
-        # Lookahead 10 nodes (20cm) to prevent corner cutting
-        lookahead = min(closest_idx + 10, len(self.path) - 1)
+        # Lookahead 6 nodes (12cm) to prevent corner cutting
+        lookahead = min(closest_idx + 6, len(self.path) - 1)
         target = self.path[lookahead]
         
         # Calculate heading error
@@ -392,19 +384,25 @@ class Bot:
             v_l = MAX_WHEEL * 0.5 if e < 0 else -MAX_WHEEL * 0.5
             v_r = -MAX_WHEEL * 0.5 if e < 0 else MAX_WHEEL * 0.5
         else: # Smooth proportional curve
-            # Run at full speed on open paths, slow down when obstacles are near
-            if min(self.d[0], self.d[1], self.d[7]) < 0.18:
-                speed = MAX_WHEEL * 0.65
+            front_min = min(self.d[0], self.d[1], self.d[7])
+            if front_min < 0.12:
+                speed = MAX_WHEEL * 0.45
+            elif front_min < 0.20:
+                speed = MAX_WHEEL * 0.70
             else:
-                speed = MAX_WHEEL * 1.0
+                speed = MAX_WHEEL * 0.85
                 
-            turn = e * MAX_WHEEL * 0.85  # steering gain
+            turn = e * MAX_WHEEL * 0.80  # steering gain
             
             # Repulsive Steering: Push away from close corners to prevent clipping!
-            if self.d[1] < 0.12: # Front-Left sees corner
-                turn -= (0.12 - self.d[1]) * MAX_WHEEL * 3.0
-            if self.d[7] < 0.12: # Front-Right sees corner
-                turn += (0.12 - self.d[7]) * MAX_WHEEL * 3.0
+            if self.d[1] < 0.10: # Front-Left sees corner
+                turn -= (0.10 - self.d[1]) * MAX_WHEEL * 2.5
+            if self.d[7] < 0.10: # Front-Right sees corner
+                turn += (0.10 - self.d[7]) * MAX_WHEEL * 2.5
+            if self.d[2] < 0.06: # Left flank
+                turn -= (0.06 - self.d[2]) * MAX_WHEEL * 2.0
+            if self.d[6] < 0.06: # Right flank
+                turn += (0.06 - self.d[6]) * MAX_WHEEL * 2.0
                 
             v_l = speed - turn
             v_r = speed + turn
@@ -614,7 +612,7 @@ def main():
         bot.drive_wheels(MAX_WHEEL, -MAX_WHEEL)
         
         samples = []
-        for _ in range(90):
+        for _ in range(180):
             if not bot.step(): return
             samples.append((bot.th, bot.d[0]))
             
@@ -625,6 +623,7 @@ def main():
             bot.x, bot.y, _ = result
             print(f"Calibrated: X={bot.x:.3f}, Y={bot.y:.3f}")
             bot.map = bytearray([127] * (NX * NY))
+            bot.inflated_map = bytearray(NX * NY)
             print("--- Navigating Maze to Goal ---")
             bot.a_star() # Force A* immediately on step 0!
         else:
@@ -638,12 +637,34 @@ def main():
             bot.state = "TRANSITION"
             
     plan_counter = 0
+    bot.prev_x, bot.prev_y = bot.x, bot.y
     while bot.step():
         if bot.state == "SECTION_1":
             plan_counter += 1
-            if plan_counter % 30 == 0:
+            if plan_counter % 10 == 0 or bot.d[0] < 0.15:
                 bot.a_star()
             bot.navigate()
+            
+            # Anti-stuck monitoring: check progress every 30 steps
+            if plan_counter % 30 == 0:
+                moved = math.hypot(bot.x - bot.prev_x, bot.y - bot.prev_y)
+                if moved < 0.015:
+                    bot.stuck_counter += 1
+                else:
+                    bot.stuck_counter = 0
+                bot.prev_x, bot.prev_y = bot.x, bot.y
+                
+            if bot.stuck_counter >= 3:
+                print("[NAVIGATE] Stuck detected! Reversing and re-planning...")
+                for _ in range(15):
+                    bot.drive_wheels(-MAX_WHEEL * 0.5, -MAX_WHEEL * 0.5)
+                    bot.step()
+                for _ in range(15):
+                    bot.drive_wheels(-MAX_WHEEL * 0.5, MAX_WHEEL * 0.5)
+                    bot.step()
+                bot.stuck_counter = 0
+                bot.path = []
+                bot.a_star()
             
             dist_to_goal = math.hypot(bot.x - GOAL[0], bot.y - GOAL[1])
             if dist_to_goal < 0.05:
