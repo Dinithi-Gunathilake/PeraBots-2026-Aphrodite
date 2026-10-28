@@ -35,8 +35,8 @@ Arena {
 Obstacles {
 }
 TwoWheelRobot {
-  translation 2.26866 0.159772 0.00245697
-  rotation -0.026775583990977556 0.010250747447849066 0.9995889106421213 2.3235643717090495
+  translation 0.22 1.275 0.02
+  rotation 0 0 1 1.5708
   name "team_robot_template"
   controller "main_controller"
   bodyColor 1 0.55 0

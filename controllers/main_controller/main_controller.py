@@ -570,30 +570,69 @@ def main():
     robot = Robot()
     bot = Bot(robot)
     
-    print("--- Starting Auto-Calibration Spin ---")
-    bot.drive_wheels(MAX_WHEEL, -MAX_WHEEL)
+    # 0. Read initial environment
+    if not bot.step(): return
     
-    samples = []
-    for _ in range(90):
-        if not bot.step(): return
-        samples.append((bot.th, bot.d[0]))
+    # Standalone Section 2 Check:
+    # If placed in narrow entrance corridor (Left and Right walls close: 25cm channel)
+    is_sec2_start = (bot.d[2] < 0.15 and bot.d[6] < 0.15 and (bot.d[2] + bot.d[6]) < 0.25)
+    
+    if is_sec2_start:
+        print("=== STANDALONE SECTION 2 EVALUATION DETECTED ===")
+        bot.camera.enable(TIME_STEP)
+        bot.maze_start_x = 0.22
+        bot.maze_start_y = 1.455
         
-    bot.drive_wheels(0, 0)
-    
-    result = localise_from_scan(samples)
-    if result:
-        bot.x, bot.y, _ = result
-        print(f"Calibrated: X={bot.x:.3f}, Y={bot.y:.3f}")
+        # Snap yaw to closest cardinal heading (normally North = pi/2)
+        cardinals = [0.0, math.pi / 2, math.pi, -math.pi / 2]
+        bot.th = min(cardinals, key=lambda a: abs(wrap(bot.th - a)))
+        
+        # If back sensor is open (d[4] > 0.30), robot is in Transition Chamber facing North
+        # If back sensor sees close wall (d[4] < 0.20), robot is already inside Maze Cell (0, 0)
+        if bot.d[4] > 0.30:
+            print("[INIT] Placed in Transition Chamber. Advancing into Maze Cell (0, 0)...")
+            bot.x = 0.22
+            bot.y = 1.275
+            bot.state = "TRANSITION"
+        else:
+            print("[INIT] Placed directly inside Maze Cell (0, 0). Starting exploration!")
+            bot.x = 0.22
+            bot.y = 1.455
+            bot.maze = MazeMap()
+            bot.col = 0
+            bot.row = 0
+            bot.target_col = None
+            bot.target_row = None
+            bot.active_path = []
+            bot.is_finishing = False
+            bot.state = "S2_INSPECT"
     else:
-        print("Calibration failed!")
-        return
-
-    # Clear map garbage collected during the spin when coordinates were 0,0
-    bot.map = bytearray([127] * (NX * NY))
-    print("--- Navigating Maze to Goal ---")
-    
-    plan_counter = 0
-    bot.a_star() # Force A* immediately on step 0!
+        print("--- Starting Auto-Calibration Spin ---")
+        bot.drive_wheels(MAX_WHEEL, -MAX_WHEEL)
+        
+        samples = []
+        for _ in range(90):
+            if not bot.step(): return
+            samples.append((bot.th, bot.d[0]))
+            
+        bot.drive_wheels(0, 0)
+        
+        result = localise_from_scan(samples)
+        if result:
+            bot.x, bot.y, _ = result
+            print(f"Calibrated: X={bot.x:.3f}, Y={bot.y:.3f}")
+            bot.map = bytearray([127] * (NX * NY))
+            print("--- Navigating Maze to Goal ---")
+            bot.a_star() # Force A* immediately on step 0!
+        else:
+            print("[FALLBACK] Section 1 outer walls not matched. Switching to Standalone Section 2 mode!")
+            bot.camera.enable(TIME_STEP)
+            bot.maze_start_x = 0.22
+            bot.maze_start_y = 1.455
+            bot.x = 0.22
+            bot.y = 1.275
+            bot.th = math.pi / 2
+            bot.state = "TRANSITION"
     
     while bot.step():
         if bot.state == "SECTION_1":
