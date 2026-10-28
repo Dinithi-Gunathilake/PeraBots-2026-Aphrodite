@@ -277,22 +277,79 @@ PROTO Arena [
         }
       }
       Solid {
-        translation 2.21 2.205 0.001
+        translation 0.345 1.705 0.05
         children [
           Shape {
             appearance PBRAppearance {
-              baseColor 1 0 0
               roughness 1
+              metalness 0
             }
             geometry Box {
-              size 0.25 0.25 0.001
+              size 0.012 0.262 0.1
             }
           }
         ]
-        name "end_marker"
+        name "maze_wall_v_c1c2_r2"
+        boundingObject Box {
+          size 0.012 0.262 0.1
+        }
       }
       Solid {
-        translation 0.345 1.58 0.05
+        translation 0.345 2.205 0.05
+        children [
+          Shape {
+            appearance PBRAppearance {
+              roughness 1
+              metalness 0
+            }
+            geometry Box {
+              size 0.012 0.262 0.1
+            }
+          }
+        ]
+        name "maze_wall_v_c1c2_r4"
+        boundingObject Box {
+          size 0.012 0.262 0.1
+        }
+      }
+      Solid {
+        translation 0.595 1.455 0.05
+        children [
+          Shape {
+            appearance PBRAppearance {
+              roughness 1
+              metalness 0
+            }
+            geometry Box {
+              size 0.012 0.262 0.1
+            }
+          }
+        ]
+        name "maze_wall_v_c2c3_r1"
+        boundingObject Box {
+          size 0.012 0.262 0.1
+        }
+      }
+      Solid {
+        translation 0.595 1.955 0.05
+        children [
+          Shape {
+            appearance PBRAppearance {
+              roughness 1
+              metalness 0
+            }
+            geometry Box {
+              size 0.012 0.262 0.1
+            }
+          }
+        ]
+        name "maze_wall_v_c2c3_r3"
+        boundingObject Box {
+          size 0.012 0.262 0.1
+        }
+      }
+      Solid {
+        translation 0.845 1.830 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -304,13 +361,13 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_wall_v_c1c2_r1r2"
+        name "maze_wall_v_c3c4_r2r3"
         boundingObject Box {
           size 0.012 0.512 0.1
         }
       }
       Solid {
-        translation 0.595 1.705 0.05
+        translation 1.095 1.705 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -322,13 +379,13 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_wall_v_c2c3_r2"
+        name "maze_wall_v_c4c5_r2"
         boundingObject Box {
           size 0.012 0.262 0.1
         }
       }
       Solid {
-        translation 0.845 2.205 0.05
+        translation 1.095 2.205 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -340,13 +397,13 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_wall_v_c3c4_r4"
+        name "maze_wall_v_c4c5_r4"
         boundingObject Box {
           size 0.012 0.262 0.1
         }
       }
       Solid {
-        translation 1.095 1.955 0.05
+        translation 1.345 1.830 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -354,17 +411,17 @@ PROTO Arena [
               metalness 0
             }
             geometry Box {
-              size 0.012 0.262 0.1
+              size 0.012 0.512 0.1
             }
           }
         ]
-        name "maze_wall_v_c4c5_r3"
+        name "maze_wall_v_c5c6_r2r3"
         boundingObject Box {
-          size 0.012 0.262 0.1
+          size 0.012 0.512 0.1
         }
       }
       Solid {
-        translation 1.345 1.455 0.05
+        translation 1.595 1.705 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -372,31 +429,13 @@ PROTO Arena [
               metalness 0
             }
             geometry Box {
-              size 0.012 0.262 0.1
+              size 0.012 0.762 0.1
             }
           }
         ]
-        name "maze_wall_v_c5c6_r1"
+        name "maze_wall_v_c6c7_r1r3"
         boundingObject Box {
-          size 0.012 0.262 0.1
-        }
-      }
-      Solid {
-        translation 1.595 2.205 0.05
-        children [
-          Shape {
-            appearance PBRAppearance {
-              roughness 1
-              metalness 0
-            }
-            geometry Box {
-              size 0.012 0.262 0.1
-            }
-          }
-        ]
-        name "maze_wall_v_c6c7_r4"
-        boundingObject Box {
-          size 0.012 0.262 0.1
+          size 0.012 0.762 0.1
         }
       }
       Solid {
@@ -413,42 +452,6 @@ PROTO Arena [
           }
         ]
         name "maze_wall_v_c7c8_r3"
-        boundingObject Box {
-          size 0.012 0.262 0.1
-        }
-      }
-      Solid {
-        translation 2.095 1.705 0.05
-        children [
-          Shape {
-            appearance PBRAppearance {
-              roughness 1
-              metalness 0
-            }
-            geometry Box {
-              size 0.012 0.262 0.1
-            }
-          }
-        ]
-        name "maze_wall_v_c8c9_r2"
-        boundingObject Box {
-          size 0.012 0.262 0.1
-        }
-      }
-      Solid {
-        translation 2.095 1.46 0.05
-        children [
-          Shape {
-            appearance PBRAppearance {
-              roughness 1
-              metalness 0
-            }
-            geometry Box {
-              size 0.012 0.262 0.1
-            }
-          }
-        ]
-        name "maze_wall_v_c8c9_r1"
         boundingObject Box {
           size 0.012 0.262 0.1
         }
@@ -472,25 +475,7 @@ PROTO Arena [
         }
       }
       Solid {
-        translation 0.595 2.08 0.05
-        children [
-          Shape {
-            appearance PBRAppearance {
-              roughness 1
-              metalness 0
-            }
-            geometry Box {
-              size 0.512 0.012 0.1
-            }
-          }
-        ]
-        name "maze_wall_h_r4r3_c2c3"
-        boundingObject Box {
-          size 0.512 0.012 0.1
-        }
-      }
-      Solid {
-        translation 1.47 2.08 0.05
+        translation 0.220 1.580 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -502,13 +487,13 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_wall_h_r4r3_c6"
+        name "maze_wall_h_r2r1_c1"
         boundingObject Box {
           size 0.262 0.012 0.1
         }
       }
       Solid {
-        translation 1.97 2.08 0.05
+        translation 0.720 1.580 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -520,13 +505,13 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_wall_h_r4r3_c8"
+        name "maze_wall_h_r2r1_c3"
         boundingObject Box {
           size 0.262 0.012 0.1
         }
       }
       Solid {
-        translation 1.095 1.83 0.05
+        translation 2.095 1.580 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -538,13 +523,13 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_wall_h_r3r2_c4c5"
+        name "maze_wall_h_r2r1_c8c9"
         boundingObject Box {
           size 0.512 0.012 0.1
         }
       }
       Solid {
-        translation 1.72 1.83 0.05
+        translation 0.470 1.830 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -556,13 +541,13 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_wall_h_r3r2_c7"
+        name "maze_wall_h_r3r2_c2"
         boundingObject Box {
           size 0.262 0.012 0.1
         }
       }
       Solid {
-        translation 0.47 1.58 0.05
+        translation 0.970 1.830 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -574,13 +559,13 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_wall_h_r2r1_c2"
+        name "maze_wall_h_r3r2_c4"
         boundingObject Box {
           size 0.262 0.012 0.1
         }
       }
       Solid {
-        translation 1.095 1.58 0.05
+        translation 1.970 1.830 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -588,17 +573,17 @@ PROTO Arena [
               metalness 0
             }
             geometry Box {
-              size 0.512 0.012 0.1
+              size 0.262 0.012 0.1
             }
           }
         ]
-        name "maze_wall_h_r2r1_c4c5"
+        name "maze_wall_h_r3r2_c8"
         boundingObject Box {
-          size 0.512 0.012 0.1
+          size 0.262 0.012 0.1
         }
       }
       Solid {
-        translation 1.845 1.58 0.05
+        translation 1.220 2.080 0.05
         children [
           Shape {
             appearance PBRAppearance {
@@ -606,36 +591,39 @@ PROTO Arena [
               metalness 0
             }
             geometry Box {
-              size 0.512 0.012 0.1
+              size 0.262 0.012 0.1
             }
           }
         ]
-        name "maze_wall_h_r2r1_c7c8"
+        name "maze_wall_h_r4r3_c5"
         boundingObject Box {
-          size 0.512 0.012 0.1
+          size 0.262 0.012 0.1
         }
       }
       Solid {
-        translation 0.72 2.205 0.001
+        translation 1.720 2.080 0.05
         children [
           Shape {
             appearance PBRAppearance {
-              baseColor 0 0 0.5
               roughness 1
+              metalness 0
             }
             geometry Box {
-              size 0.25 0.25 0.001
+              size 0.262 0.012 0.1
             }
           }
         ]
-        name "maze_tile_blue_r4c3"
+        name "maze_wall_h_r4r3_c7"
+        boundingObject Box {
+          size 0.262 0.012 0.1
+        }
       }
       Solid {
-        translation 1.97 2.205 0.001
+        translation 0.220 2.205 0.001
         children [
           Shape {
             appearance PBRAppearance {
-              baseColor 0 0.6 0
+              baseColor 1.0 0.0 0.0
               roughness 1
             }
             geometry Box {
@@ -643,14 +631,14 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_tile_green_r4c8"
+        name "end_marker"
       }
       Solid {
-        translation 0.47 1.455 0.001
+        translation 0.970 1.705 0.001
         children [
           Shape {
             appearance PBRAppearance {
-              baseColor 0 0.6 0
+              baseColor 0.0 0.0 0.5
               roughness 1
             }
             geometry Box {
@@ -658,14 +646,14 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_tile_green_r1c2"
+        name "maze_tile_blue_r2c4"
       }
       Solid {
-        translation 1.22 1.455 0.001
+        translation 2.220 2.205 0.001
         children [
           Shape {
             appearance PBRAppearance {
-              baseColor 0 0 0.5
+              baseColor 0.0 0.0 0.5
               roughness 1
             }
             geometry Box {
@@ -673,14 +661,14 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_tile_blue_r1c5"
+        name "maze_tile_blue_r4c9"
       }
       Solid {
-        translation 1.97 1.455 0.001
+        translation 0.720 1.455 0.001
         children [
           Shape {
             appearance PBRAppearance {
-              baseColor 0 0.6 0
+              baseColor 0.0 0.6 0.0
               roughness 1
             }
             geometry Box {
@@ -688,7 +676,37 @@ PROTO Arena [
             }
           }
         ]
-        name "maze_tile_green_r1c8"
+        name "maze_tile_green_r1c3"
+      }
+      Solid {
+        translation 1.220 2.205 0.001
+        children [
+          Shape {
+            appearance PBRAppearance {
+              baseColor 0.0 0.6 0.0
+              roughness 1
+            }
+            geometry Box {
+              size 0.25 0.25 0.001
+            }
+          }
+        ]
+        name "maze_tile_green_r4c5"
+      }
+      Solid {
+        translation 2.220 1.455 0.001
+        children [
+          Shape {
+            appearance PBRAppearance {
+              baseColor 0.0 0.6 0.0
+              roughness 1
+            }
+            geometry Box {
+              size 0.25 0.25 0.001
+            }
+          }
+        ]
+        name "maze_tile_green_r1c9"
       }
     ]
   }

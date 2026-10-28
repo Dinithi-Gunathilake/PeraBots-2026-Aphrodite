@@ -7,7 +7,7 @@ PROTO Obstacles [
   Group {
     children [
     Solid {
-      translation 0.978 0.063 0.05
+      translation 1.100 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -26,7 +26,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.309 0.355 0.05
+      translation 1.200 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -45,7 +45,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.059 0.065 0.05
+      translation 1.300 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -64,7 +64,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.419 0.315 0.05
+      translation 1.400 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -83,7 +83,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.369 0.465 0.05
+      translation 1.500 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -102,7 +102,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.479 0.425 0.05
+      translation 1.600 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -121,7 +121,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.589 0.425 0.05
+      translation 1.700 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -140,7 +140,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.679 0.505 0.05
+      translation 1.800 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -159,7 +159,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.779 0.525 0.05
+      translation 1.900 0.450 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -178,7 +178,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.406 0.293 0.05
+      translation 1.900 0.550 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -197,7 +197,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.506 0.233 0.05
+      translation 1.900 0.650 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -216,7 +216,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.606 0.273 0.05
+      translation 1.900 0.750 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -235,7 +235,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.706 0.213 0.05
+      translation 1.800 0.750 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -254,7 +254,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.806 0.163 0.05
+      translation 1.700 0.750 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -273,7 +273,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.769 0.06 0.05
+      translation 1.400 0.450 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -292,7 +292,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.513 0.317 0.05
+      translation 1.300 0.450 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -311,7 +311,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.478 0.805 0.05
+      translation 1.200 0.450 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -330,7 +330,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.997 0.783 0.05
+      translation 1.100 0.450 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -349,7 +349,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.111 0.231 0.05
+      translation 1.100 0.550 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -368,7 +368,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.011 0.171 0.05
+      translation 1.100 0.650 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -387,7 +387,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.211 0.281 0.05
+      translation 1.100 0.750 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -406,7 +406,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.311 0.331 0.05
+      translation 1.100 0.850 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -425,7 +425,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 2.118 0.46 0.05
+      translation 1.200 0.850 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -444,7 +444,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 2.078 0.56 0.05
+      translation 1.300 0.850 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -463,7 +463,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.854 0.895 0.05
+      translation 1.400 0.850 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -482,7 +482,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.298 0.715 0.05
+      translation 0.850 0.650 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -501,7 +501,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.398 0.735 0.05
+      translation 0.750 0.650 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -520,7 +520,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.508 0.685 0.05
+      translation 0.650 0.650 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -539,7 +539,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.608 0.745 0.05
+      translation 0.550 0.650 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -558,7 +558,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.708 0.715 0.05
+      translation 0.550 0.750 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -577,7 +577,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.708 0.815 0.05
+      translation 0.550 0.850 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -596,7 +596,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.808 0.795 0.05
+      translation 0.550 0.950 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -615,7 +615,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.58 0.908 0.05
+      translation 0.550 1.050 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -634,7 +634,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.83 1.168 0.05
+      translation 0.650 1.050 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -653,7 +653,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.93 1.128 0.05
+      translation 0.750 1.050 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -672,7 +672,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.03 1.108 0.05
+      translation 0.400 0.250 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -691,7 +691,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.13 1.168 0.05
+      translation 0.500 0.250 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -710,7 +710,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 1.23 1.168 0.05
+      translation 0.600 0.250 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -729,7 +729,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.471 0.902 0.05
+      translation 0.700 0.250 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -748,7 +748,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.366 0.871 0.05
+      translation 0.700 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -767,7 +767,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 0.056 1.161 0.05
+      translation 0.600 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -786,7 +786,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 2.138 0.659 0.05
+      translation 0.500 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
@@ -805,7 +805,7 @@ PROTO Obstacles [
       }
     }
     Solid {
-      translation 2.178 0.759 0.05
+      translation 0.400 0.150 0.05
       children [
         Shape {
           appearance PBRAppearance {
