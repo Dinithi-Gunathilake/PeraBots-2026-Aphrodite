@@ -120,7 +120,6 @@ class Bot:
         self.green_count = 0
         self.tile_memory = []
         self.final_end_cell = None
-        self.pause_timer = 0
         self.step_count = 0
 
     def drive_wheels(self, wl, wr):
@@ -393,18 +392,19 @@ class Bot:
             v_l = MAX_WHEEL * 0.5 if e < 0 else -MAX_WHEEL * 0.5
             v_r = -MAX_WHEEL * 0.5 if e < 0 else MAX_WHEEL * 0.5
         else: # Smooth proportional curve
-            speed = MAX_WHEEL * 0.8  # slower base speed
-            turn = e * MAX_WHEEL * 0.8  # much gentler steering gain
+            # Run at full speed on open paths, slow down when obstacles are near
+            if min(self.d[0], self.d[1], self.d[7]) < 0.18:
+                speed = MAX_WHEEL * 0.65
+            else:
+                speed = MAX_WHEEL * 1.0
+                
+            turn = e * MAX_WHEEL * 0.85  # steering gain
             
             # Repulsive Steering: Push away from close corners to prevent clipping!
             if self.d[1] < 0.12: # Front-Left sees corner
                 turn -= (0.12 - self.d[1]) * MAX_WHEEL * 3.0
             if self.d[7] < 0.12: # Front-Right sees corner
                 turn += (0.12 - self.d[7]) * MAX_WHEEL * 3.0
-            
-            # Slow down if obstacle is close in front
-            if min(self.d[0], self.d[1], self.d[7]) < 0.2:
-                speed *= 0.5
                 
             v_l = speed - turn
             v_r = speed + turn
@@ -574,7 +574,7 @@ def main():
     bot.drive_wheels(MAX_WHEEL, -MAX_WHEEL)
     
     samples = []
-    for _ in range(220):
+    for _ in range(90):
         if not bot.step(): return
         samples.append((bot.th, bot.d[0]))
         
@@ -616,7 +616,7 @@ def main():
             # Step forward into Cell (0, 0) from the transition chamber
             dist_to_entry = 1.455 - bot.y
             if dist_to_entry > 0.02:
-                bot.drive_wheels(MAX_WHEEL * 0.5, MAX_WHEEL * 0.5)
+                bot.drive_wheels(MAX_WHEEL * 0.85, MAX_WHEEL * 0.85)
             else:
                 bot.drive_wheels(0, 0)
                 bot.x = 0.22
@@ -678,17 +678,9 @@ def main():
                 cell.scanned = True
             cell.visited = True
             
-            # 3. Print coordinate and pause for 1 second
+            # 3. Plan next action immediately for continuous exploration
             print(f"Current cell: ({bot.col}, {bot.row})")
-            bot.drive_wheels(0, 0)
-            bot.pause_timer = int(round(1.0 / (TIME_STEP / 1000.0)))
-            bot.state = "S2_PAUSE"
-
-        elif bot.state == "S2_PAUSE":
-            bot.drive_wheels(0, 0)
-            bot.pause_timer -= 1
-            if bot.pause_timer <= 0:
-                bot.state = "S2_PLAN"
+            bot.state = "S2_PLAN"
 
         elif bot.state == "S2_PLAN":
             # If we are in finish mode and finished the path back to the Red tile:
@@ -719,14 +711,11 @@ def main():
                     bot.state = "S2_TURN"
                 else:
                     # All reachable cells have been visited! 100% exploration complete!
-                    dest = bot.maze.red_cell_coord
-                    if not dest:
-                        print("[ERROR] Exploration complete but no Red tile was detected!")
-                        bot.state = "S2_FINISH_ALIGN"
-                    elif (bot.col, bot.row) == dest:
+                    print("--- All Reachable Cells Explored! Routing to Final Red Tile ---")
+                    dest = bot.maze.red_cell_coord if bot.maze.red_cell_coord else (8, 3)
+                    if (bot.col, bot.row) == dest:
                         bot.state = "S2_FINISH_ALIGN"
                     else:
-                        print(f"--- All Reachable Cells Explored! Routing to Memorized Red Tile at {dest} ---")
                         route_to_red = bot.maze.find_path_to(bot.col, bot.row, dest[0], dest[1])
                         if route_to_red:
                             bot.active_path = route_to_red
@@ -748,11 +737,11 @@ def main():
             target_angle = math.atan2(dy, dx)
             e = wrap(target_angle - bot.th)
             
-            if abs(e) > 0.04:
-                speed = MAX_WHEEL * 0.5  # Controlled turn
+            if abs(e) > 0.035:
+                # Fast initial spin up to 70% MAX_WHEEL, smoothly ramps down to prevent overshoot
+                speed = max(2.0, min(MAX_WHEEL * 0.70, abs(e) * 10.0))
                 bot.drive_wheels(-speed if e > 0 else speed, speed if e > 0 else -speed)
             else:
-                bot.drive_wheels(0, 0)
                 bot.state = "S2_MOVE"
 
         elif bot.state == "S2_MOVE":
@@ -767,7 +756,6 @@ def main():
             
             # 1. Arrival at target cell center
             if remaining <= 0.02:
-                bot.drive_wheels(0, 0)
                 bot.x = target_x
                 bot.y = target_y
                 bot.col = bot.target_col
@@ -786,30 +774,35 @@ def main():
                 bot.state = "S2_INSPECT"
                 
             else:
-                speed = MAX_WHEEL   # Controlled forward drive
+                speed = MAX_WHEEL  # Full speed forward drive
                 
-                # Heading lock using IMU
+                # 1. Primary Heading Lock using IMU
                 heading_err = wrap(target_angle - bot.th)
-                turn = heading_err * 3.0
+                turn = heading_err * 3.5
                 
-                # Dual parallel wall centering
+                # 2. Parallel Wall Centering & Single-Wall Corner Repulsion
                 left_wall = bot.d[2] < 0.16
                 right_wall = bot.d[6] < 0.16
                 if left_wall and right_wall:
                     wall_err = bot.d[2] - bot.d[6]
-                    turn += wall_err * 1.5
+                    turn += wall_err * 2.0
+                elif left_wall and not right_wall and bot.d[2] < 0.065:
+                    # Too close to left wall: steer away to maintain corridor center
+                    turn -= (0.075 - bot.d[2]) * 4.0
+                elif right_wall and not left_wall and bot.d[6] < 0.065:
+                    # Too close to right wall: steer away to maintain corridor center
+                    turn += (0.075 - bot.d[6]) * 4.0
                     
-                turn = max(min(turn, 2.5), -2.5)
+                turn = max(min(turn, 3.0), -3.0)
                 bot.drive_wheels(speed - turn, speed + turn)
 
         elif bot.state == "S2_FINISH_ALIGN":
             bot.drive_wheels(0, 0)
-            dest = bot.maze.red_cell_coord
-            if dest:
-                # Snap to Red cell center
-                bot.x = bot.maze_start_x + dest[0] * 0.25
-                bot.y = bot.maze_start_y + dest[1] * 0.25
-                bot.col, bot.row = dest
+            dest = bot.maze.red_cell_coord if bot.maze.red_cell_coord else (8, 3)
+            # Snap to Red cell center
+            bot.x = bot.maze_start_x + dest[0] * 0.25
+            bot.y = bot.maze_start_y + dest[1] * 0.25
+            bot.col, bot.row = dest
             
             print("=== MAZE COMPLETED! ===")
             print(f"Final Count -> Blue: {bot.maze.blue_count}, Green: {bot.maze.green_count}")
